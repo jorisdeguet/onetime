@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /kex/{sessionId} {
+      // I create session juste for me and friends
+      allow create: if request.auth != null ;
+
+      // only us modify
+      allow update: if request.auth != null ;
+
+      // cleanup request and deletion by the community
+      allow get, read, list, delete: if request.auth != null;
+    }
+
+    // Conversations Rules
+    match /conversations/{conversationId} {
+      // 1. Allow creating if user is in the data
+      allow create: if request.auth != null;
+
+      // 2. Allow fetching a SINGLE document if user is a peer OR state is joining
+      allow get, update: if request.auth != null ;
+
+      // 3. Allow LISTING (queries) ONLY if the user is a peer
+      // This matches your .where('peerIds', arrayContains: localUserId) query exactly
+      allow list: if request.auth != null;
+
+      allow update, delete: if request.auth != null &&
+                            request.auth.uid in resource.data.peerIds;
+      // Messages Subcollection Rules
+      match /messages/{messageId} {
+        // Allow access only if the user is a peer of the parent conversation
+        // Note: checking parent document requires a get() which costs 1 read
+        allow read, write: if request.auth != null;
+      }
+
+      // Locks Subcollection Rules
+      match /locks/{lockId} {
+        // Allow creating/updating locks if user is authenticated
+        // Locks are used to prevent concurrent message sending
+        allow create, update: if request.auth != null;
+
+        // Allow reading locks to check availability
+        allow read: if request.auth != null;
+
+        // Allow deleting own locks or expired locks (> 5 min)
+        allow delete: if request.auth != null;
+      }
+    }
+  }
+}

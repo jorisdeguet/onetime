@@ -1,0 +1,26 @@
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "onetime-bf68b",
+          "appId": "1:449858051942:android:078675b8ca64aa274532a7",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "onetime-bf68b",
+          "configurations": {
+            "android": "1:449858051942:android:078675b8ca64aa274532a7",
+            "ios": "1:449858051942:ios:9c91855aad5eafa64532a7"
+          }
+        }
+      }
+    }
+  }
+}

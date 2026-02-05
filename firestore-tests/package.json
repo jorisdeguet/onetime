@@ -1,0 +1,16 @@
+{
+  "name": "onetime-firestore-rules-tests",
+  "version": "1.0.0",
+  "description": "Unit tests for Firestore security rules of the Onetime app",
+  "private": true,
+  "scripts": {
+    "test": "mocha --exit --timeout 20000",
+    "test:emulator": "firebase emulators:exec \"npm test\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "latest",
+    "chai": "^4.3.7",
+    "firebase-tools": "^15.2.1",
+    "mocha": "^10.2.0"
+  }
+}
