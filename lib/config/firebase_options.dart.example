@@ -50,21 +50,21 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyDyJd8qO-TW35RvokH9c1jXmHiD8esf2ZU',
-    appId: '1:449858051942:android:078675b8ca64aa274532a7',
-    messagingSenderId: '449858051942',
-    projectId: 'onetime-bf68b',
-    storageBucket: 'onetime-bf68b.firebasestorage.app',
+    apiKey: 'YOUR_ANDROID_API_KEY',
+    appId: 'YOUR_ANDROID_APP_ID',
+    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
+    projectId: 'YOUR_PROJECT_ID',
+    storageBucket: 'YOUR_STORAGE_BUCKET',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyAE3hgFOR9Qnm0VXrJaNszcWayu3qBtUQM',
-    appId: '1:449858051942:ios:9c91855aad5eafa64532a7',
-    messagingSenderId: '449858051942',
-    projectId: 'onetime-bf68b',
-    storageBucket: 'onetime-bf68b.firebasestorage.app',
-    androidClientId: '449858051942-ktk478dqheb25n431upst4qtkobaonll.apps.googleusercontent.com',
-    iosBundleId: 'org.deguet.jo.onetime',
+    apiKey: 'YOUR_IOS_API_KEY',
+    appId: 'YOUR_IOS_APP_ID',
+    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
+    projectId: 'YOUR_PROJECT_ID',
+    storageBucket: 'YOUR_STORAGE_BUCKET',
+    androidClientId: 'YOUR_ANDROID_CLIENT_ID',
+    iosBundleId: 'YOUR_IOS_BUNDLE_ID',
   );
 
 }
