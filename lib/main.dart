@@ -7,8 +7,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Ajout : options générées par FlutterFire CLI
-import 'config/firebase_options.dart';
 import 'home/home_screen.dart';
+import 'firebase_options.dart';
 import 'l10n/app_localizations.dart';
 import 'signin/auth_service.dart';
 import 'signin/login_screen.dart';
