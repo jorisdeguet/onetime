@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:onetime/services/message_service.dart';
-import 'package:onetime/services/kex_firestore.dart';
+import 'package:onetime/models/firestore/fs_kex.dart';
 import 'package:onetime/screens/key_exchange_summary_screen.dart';
 import 'package:onetime/services/key_exchange_sync_service.dart';
 import 'package:onetime/services/key_pre_generation_service.dart';
@@ -45,8 +45,8 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
   KexSessionReader? _session;
 
   // Session Firestore (pour la synchronisation)
-  KexSessionModel? _firestoreSession;
-  StreamSubscription<KexSessionModel?>? _sessionSubscription;
+  FsKex? _firestoreSession;
+  StreamSubscription<FsKex?>? _sessionSubscription;
 
   KeyExchangeRole _role = KeyExchangeRole.source;
   int _currentStep = 0;
@@ -270,7 +270,7 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
     }
   }
 
-  void _onSessionUpdate(KexSessionModel? session) {
+  void _onSessionUpdate(FsKex? session) {
     if (session == null) {
       _log.w('KeyExchange', 'Session is null');
       return;
@@ -1424,7 +1424,7 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
     );
   }
 
-  List<Widget> _buildPeerProgressBars(KexSessionModel session) {
+  List<Widget> _buildPeerProgressBars(FsKex session) {
     // Get all other participants (excluding current user)
     final otherPeers = session.otherParticipants.where((p) => p != _currentUserId).toList();
     

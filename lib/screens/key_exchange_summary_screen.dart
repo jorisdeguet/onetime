@@ -5,12 +5,12 @@ import '../models/firestore/fs_conversation.dart';
 import 'conversation_detail_screen.dart';
 import '../services/app_logger.dart';
 import '../services/format_service.dart';
-import '../services/kex_firestore.dart';
+import '../models/firestore/fs_kex.dart';
 import '../models/local/shared_key.dart';
 
 /// Screen showing detailed summary of a key exchange
 class KeyExchangeSummaryScreen extends StatelessWidget {
-  final KexSessionModel session;
+  final FsKex session;
   final SharedKey newKey;
   final Conversation conversation;
   final String currentUserId;

@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'app_logger.dart';
-import 'kex_firestore.dart';
+import '../models/firestore/fs_kex.dart';
 
 /// Service to synchronize key exchange sessions via Firestore.
 ///
@@ -19,7 +19,7 @@ class KeyExchangeSyncService {
       _firestore.collection('kex');
 
   /// Crée une nouvelle session d'échange de clé dans Firestore
-  Future<KexSessionModel> createSession({
+  Future<FsKex> createSession({
     required String sourceId,
     required List<String> participants,
     required int totalKeyBytes,
@@ -31,7 +31,7 @@ class KeyExchangeSyncService {
     // S'assurer que la source est dans les participants
     final allParticipants = {...participants, sourceId}.toList()..sort();
 
-    final session = KexSessionModel.createInitial(
+    final session = FsKex.createInitial(
       id: sessionId,
       conversationId: conversationId,
       sourceId: sourceId,
@@ -45,17 +45,17 @@ class KeyExchangeSyncService {
   }
 
   /// Récupère une session par ID
-  Future<KexSessionModel?> getSession(String sessionId) async {
+  Future<FsKex?> getSession(String sessionId) async {
     final doc = await _sessionsRef.doc(sessionId).get();
     if (!doc.exists) return null;
-    return KexSessionModel.fromFirestore(doc.data()!);
+    return FsKex.fromFirestore(doc.data()!);
   }
 
   /// Écoute les changements d'une session en temps réel
-  Stream<KexSessionModel?> watchSession(String sessionId) {
+  Stream<FsKex?> watchSession(String sessionId) {
     return _sessionsRef.doc(sessionId).snapshots().map((snapshot) {
       if (!snapshot.exists) return null;
-      return KexSessionModel.fromFirestore(snapshot.data()!);
+      return FsKex.fromFirestore(snapshot.data()!);
     });
   }
 
@@ -80,7 +80,7 @@ class KeyExchangeSyncService {
         throw Exception('Session not found');
       }
 
-      final session = KexSessionModel.fromFirestore(snapshot.data()!);
+      final session = FsKex.fromFirestore(snapshot.data()!);
       if (!session.hasScanned(participantId, segmentIndex)) {
         session.addScannedSegment(
           participantId: participantId,
@@ -174,7 +174,7 @@ class KeyExchangeSyncService {
   }
 
   /// Trouve les sessions actives pour un participant
-  Stream<List<KexSessionModel>> watchActiveSessionsForParticipant(
+  Stream<List<FsKex>> watchActiveSessionsForParticipant(
     String participantId,
   ) {
     return _sessionsRef
@@ -182,7 +182,7 @@ class KeyExchangeSyncService {
         .where('status', isEqualTo: KeyExchangeStatus.inProgress.name)
         .snapshots()
         .map((snapshot) => snapshot.docs
-            .map((doc) => KexSessionModel.fromFirestore(doc.data()))
+            .map((doc) => FsKex.fromFirestore(doc.data()))
             .toList());
   }
 }

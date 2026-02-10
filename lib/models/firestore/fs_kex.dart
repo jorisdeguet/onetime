@@ -6,7 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 /// This session allows synchronizing state between:
 /// - The source participant who displays QR codes
 /// - The participants who scan the QR codes
-class KexSessionModel {
+class FsKex {
   /// ID unique de la session
   final String id;
 
@@ -36,7 +36,7 @@ class KexSessionModel {
 
   /// Constructeur principal — prend explicitement tous les champs.
   /// Utile pour la désérialisation depuis Firestore.
-  KexSessionModel({
+  FsKex({
     required this.id,
     this.conversationId,
     required this.sourceId,
@@ -55,7 +55,7 @@ class KexSessionModel {
   /// - `participants` doit contenir l'identifiant `sourceId` (si absent, il sera ajouté).
   /// - Le `sourceId` recevra la liste complète des indexes [0..totalSegments-1].
   /// - Les autres participants auront des listes vides (ils n'ont encore scanné rien).
-  KexSessionModel.createInitial({
+  FsKex.createInitial({
     required this.id,
     this.conversationId,
     required this.sourceId,
@@ -193,7 +193,7 @@ class KexSessionModel {
   }
 
   /// Désérialise depuis Firestore
-  factory KexSessionModel.fromFirestore(Map<String, dynamic> data) {
+  factory FsKex.fromFirestore(Map<String, dynamic> data) {
     final segmentsByPeerRaw = data['segmentsByPeer'] as Map<String, dynamic>? ?? {};
     final segmentsByPeer = <String, List<int>>{};
     segmentsByPeerRaw.forEach((key, value) {
@@ -220,7 +220,7 @@ class KexSessionModel {
     // Ensure sourceId exists in parsed structure
     final sourceId = data['sourceId'] as String;
 
-    return KexSessionModel(
+    return FsKex(
       id: data['id'] as String,
       conversationId: data['conversationId'] as String?,
       sourceId: sourceId,
@@ -243,7 +243,7 @@ class KexSessionModel {
   /// Convenience factory: construct a model representing a source session.
   /// This is a thin wrapper around the main constructor and kept for clarity
   /// when creating a session originating from the source device.
-  factory KexSessionModel.fromSource({
+  factory FsKex.fromSource({
     required String id,
     String? conversationId,
     required String sourceId,
@@ -254,7 +254,7 @@ class KexSessionModel {
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
-    return KexSessionModel(
+    return FsKex(
       id: id,
       conversationId: conversationId,
       sourceId: sourceId,
@@ -270,7 +270,7 @@ class KexSessionModel {
   /// Convenience factory: construct a model representing a reader session.
   /// This is a thin wrapper around the main constructor and clarifies intent
   /// when building a model from a reader-side state.
-  factory KexSessionModel.fromReader({
+  factory FsKex.fromReader({
     required String id,
     String? conversationId,
     required String sourceId,
@@ -281,7 +281,7 @@ class KexSessionModel {
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
-    return KexSessionModel(
+    return FsKex(
       id: id,
       conversationId: conversationId,
       sourceId: sourceId,
