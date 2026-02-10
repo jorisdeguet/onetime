@@ -16,5 +16,5 @@ class AppConfig {
 
   /// Liste des tags de logs à afficher. Si vide => afficher tous les tags.
   /// Exemple: ['KeyStorage', 'KeyExchange']
-  static const List<String> enabledLogTags = ['UnreadMsg', 'LockService'];
+  static const List<String> enabledLogTags = ['ALL', 'UnreadMsg', 'LockService', 'Conversation'];
 }
