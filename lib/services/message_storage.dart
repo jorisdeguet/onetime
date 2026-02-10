@@ -2,10 +2,10 @@ import 'dart:async';
 
 import 'package:onetime/services/app_logger.dart';
 import 'package:onetime/services/local_storage_service.dart';
-import 'package:onetime/models/local/models.dart';
+import 'package:onetime/models/local/local_message.dart';
 
-// Re-export DecryptedMessageData from models.dart for backwards compatibility
-export 'package:onetime/models/local/models.dart' show LocalMessage;
+// Re-export LocalMessage for backwards compatibility
+export 'package:onetime/models/local/local_message.dart';
 
 /// Service to locally store decrypted messages.
 ///
