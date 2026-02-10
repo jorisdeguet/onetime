@@ -162,15 +162,24 @@ class MessageService {
     );
 
     // Générer un ack anonyme pour le transfert (T)
-    final transferAckId = _generateAnonymousAckId();
+    final transferAckId = _generateAckId('T');
     message.addAck(transferAckId);
 
     // Générer un ack de lecture (R) - l'expéditeur a déjà "lu" son propre message
-    final readAckId = _generateDeterministicAckId(message.id, 'read');
+    final readAckId = _generateAckId('R');
     message.addAck(readAckId);
 
-    // Sauvegarder notre ackId de transfert localement pour pouvoir le retrouver plus tard
-    await _saveLocalAckId(conversationId, message.id, transferAckId);
+    // Mettre à jour le message local avec nos ackIds
+    final updatedLocalData = localData.copyWith(
+      myTransferAckId: transferAckId,
+      myReadAckId: readAckId,
+    );
+
+    // Sauvegarder le message local avec les ackIds
+    await _messageStorage.updateMessage(
+      conversationId: conversationId,
+      message: updatedLocalData,
+    );
 
     // Envoyer sur Firestore (senderId est dans les métadonnées chiffrées)
     _log.d('MessageService', 'Calling conversationService.sendMessage...');
@@ -181,46 +190,24 @@ class MessageService {
 
     _log.i('MessageService', 'Message sent successfully!');
     await updateKeyDebugInfo(conversationId);
-  }
-
-  /// Generates an anonymous ack ID for transfer acknowledgment
-  /// Prefixed with 'T' to distinguish from read acks
-  String _generateAnonymousAckId() {
-    // Get a secure random number
+  }  /// Generates an anonymous ack ID with minimal identifying information
+  /// [prefix] is 'T' for transfer or 'R' for read
+  /// Uses secure random + timestamp, then hashes to remove any pattern
+  String _generateAckId(String prefix) {
     final random = Random.secure();
-    final randomInt = random.nextInt(1000000000);
-    final input = randomInt.toString() + _authService.currentUserId!;
-    // Hash with SHA256
+    // Combine multiple random values and timestamp for entropy
+    final randomBytes = List<int>.generate(16, (_) => random.nextInt(256));
+    final timestamp = DateTime.now().microsecondsSinceEpoch;
+    final input = '$timestamp${randomBytes.join()}';
+    // Hash with SHA256 to remove any identifying pattern
     final bytes = utf8.encode(input);
     final digest = sha256.convert(bytes);
-    // Prefix with T for Transfer ack
-    return 'T${base64Url.encode(digest.bytes).substring(0, 15)}';
-  }
-
-  /// Generates a deterministic ack ID for a specific message and type (e.g. 'read')
-  /// This ensures the same user always generates the same ackId for a given message
-  /// Prefixed with 'R' for read acks to distinguish from transfer acks
-  String _generateDeterministicAckId(String messageId, String type) {
-    final random = Random.secure();
-    final randomInt = random.nextInt(1000000000);
-    final input = "${randomInt}_${messageId}_$type";
-    final bytes = utf8.encode(input);
-    final digest = sha256.convert(bytes);
-    // Prefix with R for Read ack
-    return 'R${base64Url.encode(digest.bytes).substring(0, 15)}';
+    // Prefix with T/R and take 15 chars of hash
+    return '$prefix${base64Url.encode(digest.bytes).substring(0, 15)}';
   }
 
   final _localStorage = LocalStorageService();
 
-  /// Sauvegarde l'ackId local pour un message
-  Future<void> _saveLocalAckId(String conversationId, String messageId, String ackId) async {
-    await _localStorage.saveAckId(conversationId, messageId, ackId);
-  }
-
-  /// Récupère l'ackId local pour un message (si existant)
-  Future<String?> _getLocalAckId(String conversationId, String messageId) async {
-    return _localStorage.getAckId(conversationId, messageId);
-  }
 
   Future<void> sendMessage(String messageToSend, String conversationID) async {
     final text = messageToSend.trim();
@@ -378,13 +365,10 @@ class MessageService {
 
     final sub = _conversationService.watchMessages(conversationId).listen((msgs) async {
       for (final msg in msgs) {
-        // Quick skip if already processed locally
+        // Quick skip if already processed locally (includes messages we sent)
         final existing = await _messageStorage.getDecryptedMessage(conversationId: conversationId, messageId: msg.id);
         if (existing != null) continue;
 
-        // Si on a un ackId local pour ce message, c'est nous qui l'avons envoyé
-        final localAckId = await _getLocalAckId(conversationId, msg.id);
-        if (localAckId != null) continue;
 
         // Avoid concurrent processing
         if (_processing[conversationId]!.contains(msg.id)) continue;
@@ -529,13 +513,25 @@ class MessageService {
         // Ne pas bloquer, juste logger
       }
 
-      // Ajouter un ack anonyme pour signaler le transfert
-      final ackId = _generateAnonymousAckId();
-      await _saveLocalAckId(conversationId, msg.id, ackId);
+      // Générer un ack anonyme pour signaler le transfert
+      final transferAckId = _generateAckId('T');
+
+      // Mettre à jour le message local avec notre transferAckId
+      final existingMsg = await _messageStorage.getDecryptedMessage(
+        conversationId: conversationId,
+        messageId: msg.id,
+      );
+      if (existingMsg != null) {
+        await _messageStorage.updateMessage(
+          conversationId: conversationId,
+          message: existingMsg.copyWith(myTransferAckId: transferAckId),
+        );
+      }
+
       await _conversationService.addMessageAck(
         conversationId: conversationId,
         messageId: msg.id,
-        ackId: ackId,
+        ackId: transferAckId,
       );
 
       // Persist updated key bitmap
@@ -562,13 +558,10 @@ class MessageService {
       final toProcess = messages.reversed.toList();
 
       for (final msg in toProcess) {
-        // Quick skip if already processed locally
+        // Quick skip if already processed locally (includes messages we sent)
         final existing = await _messageStorage.getDecryptedMessage(conversationId: conversationId, messageId: msg.id);
         if (existing != null) continue;
 
-        // Si on a un ackId local pour ce message, c'est nous qui l'avons envoyé
-        final localAckId = await _getLocalAckId(conversationId, msg.id);
-        if (localAckId != null) continue;
 
         // Avoid concurrent processing
         _processing.putIfAbsent(conversationId, () => {});
@@ -715,8 +708,8 @@ class MessageService {
 
     // Process each message
     for (final msg in messages) {
-      // Generate deterministic read ack for this message
-      final readAckId = await _generateDeterministicAckId(msg.id, 'read');
+      // Use existing readAckId if already set, otherwise generate a new one
+      final readAckId = msg.myReadAckId ?? _generateAckId('R');
 
       try {
         // Add ack to Firestore and get status (idempotent)
@@ -727,11 +720,12 @@ class MessageService {
           expectedAckCount: expectedAckCount,
         );
 
-        // Update local message with cloud status
+        // Update local message with cloud status and readAckId
         final updatedMessage = msg.copyWith(
           existsInCloud: cloudStatus.exists,
           hasCloudContent: cloudStatus.hasContent,
           allRead: cloudStatus.allRead,
+          myReadAckId: readAckId,
         );
 
         await _messageStorage.updateMessage(

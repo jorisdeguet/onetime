@@ -197,38 +197,4 @@ class SharedKey {
     );
   }
 
-  /// Serializes key for local storage
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'peerIds': peerIds,
-      'nextAvailableByte': _nextAvailableByte,
-      'createdAt': createdAt.toIso8601String(),
-      'history': history.toJson(),
-    };
-  }
-
-  /// Deserializes a key from local storage
-  factory SharedKey.fromJson(Map<String, dynamic> json) {
-    final startOffset = json['startOffset'] as int? ?? 0;
-    final id = json['id'] as String;
-
-    // Load history if present
-    KeyHistory? history;
-    if (json['history'] != null) {
-      history = KeyHistory.fromJson(json['history'] as Map<String, dynamic>);
-    }
-
-    int? nextAvail = json['nextAvailableByte'] as int? ?? startOffset;
-
-    // Note: keyData bytes must be read from KeyFileStorage after constructing the object.
-    return SharedKey(
-      id: id,
-      keyData: Uint8List(0), // placeholder; caller must replace by reading file
-      peerIds: List<String>.from(json['peerIds'] as List),
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      history: history,
-      nextAvailableByte: nextAvail,
-    );
-  }
 }

@@ -6,9 +6,7 @@ part of 'models.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-LocalMessage _$DecryptedMessageDataFromJson(
-  Map<String, dynamic> json,
-) => LocalMessage(
+LocalMessage _$LocalMessageFromJson(Map<String, dynamic> json) => LocalMessage(
   id: json['id'] as String,
   senderId: json['senderId'] as String,
   createdAt: DateTime.parse(json['createdAt'] as String),
@@ -27,9 +25,11 @@ LocalMessage _$DecryptedMessageDataFromJson(
   existsInCloud: json['existsInCloud'] as bool? ?? true,
   hasCloudContent: json['hasCloudContent'] as bool? ?? true,
   allRead: json['allRead'] as bool? ?? false,
+  myTransferAckId: json['myTransferAckId'] as String?,
+  myReadAckId: json['myReadAckId'] as String?,
 );
 
-Map<String, dynamic> _$DecryptedMessageDataToJson(
+Map<String, dynamic> _$LocalMessageToJson(
   LocalMessage instance,
 ) => <String, dynamic>{
   'id': instance.id,
@@ -48,6 +48,8 @@ Map<String, dynamic> _$DecryptedMessageDataToJson(
   'existsInCloud': instance.existsInCloud,
   'hasCloudContent': instance.hasCloudContent,
   'allRead': instance.allRead,
+  'myTransferAckId': instance.myTransferAckId,
+  'myReadAckId': instance.myReadAckId,
 };
 
 KeyMetadata _$KeyMetadataFromJson(Map<String, dynamic> json) => KeyMetadata(

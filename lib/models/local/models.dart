@@ -53,7 +53,7 @@ class MessageContentTypeConverter implements JsonConverter<MessageContentType, S
 
 /// Represents a decrypted message stored locally
 @JsonSerializable()
-class LocalMessage {  // TODO rename LocalMessage
+class LocalMessage {
   final String id;
   final String senderId;
   final DateTime createdAt;
@@ -79,6 +79,10 @@ class LocalMessage {  // TODO rename LocalMessage
   // true if all participants have read (all R acks received)
   final bool allRead;
 
+  // My ack IDs for this message (to know which acks are mine)
+  final String? myTransferAckId;
+  final String? myReadAckId;
+
   LocalMessage({
     required this.id,
     required this.senderId,
@@ -94,13 +98,17 @@ class LocalMessage {  // TODO rename LocalMessage
     this.existsInCloud = true,
     this.hasCloudContent = true,
     this.allRead = false,
+    this.myTransferAckId,
+    this.myReadAckId,
   });
 
-  /// Creates a copy with updated cloud status
+  /// Creates a copy with updated fields
   LocalMessage copyWith({
     bool? existsInCloud,
     bool? hasCloudContent,
     bool? allRead,
+    String? myTransferAckId,
+    String? myReadAckId,
   }) {
     return LocalMessage(
       id: id,
@@ -117,13 +125,15 @@ class LocalMessage {  // TODO rename LocalMessage
       existsInCloud: existsInCloud ?? this.existsInCloud,
       hasCloudContent: hasCloudContent ?? this.hasCloudContent,
       allRead: allRead ?? this.allRead,
+      myTransferAckId: myTransferAckId ?? this.myTransferAckId,
+      myReadAckId: myReadAckId ?? this.myReadAckId,
     );
   }
 
   factory LocalMessage.fromJson(Map<String, dynamic> json) =>
-      _$DecryptedMessageDataFromJson(json);
+      _$LocalMessageFromJson(json);
 
-  Map<String, dynamic> toJson() => _$DecryptedMessageDataToJson(this);
+  Map<String, dynamic> toJson() => _$LocalMessageToJson(this);
 }
 
 /// Key metadata stored locally
