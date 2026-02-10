@@ -2,6 +2,9 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fixnum/fixnum.dart';
+
+import '../../generated/message.pb.dart';
 
 /// Message content type
 enum MessageContentType {
@@ -22,40 +25,53 @@ enum ImageQuality {
   const ImageQuality(this.maxDimension, this.label);
 }
 
-/// Encrypted message metadata.
-/// This data is included in the EncryptedMessageProto protobuf,
-/// then everything is encrypted with XOR (One-Time Pad).
-///
-/// Protobuf encoding is handled by EncryptedMessageProto in metadata_proto.dart
-class EncryptedMetadata {
-  /// Sender ID
-  final String senderId;
+/// Extension on EncryptedMessageProto for convenience methods
+extension EncryptedMessageProtoExt on EncryptedMessageProto {
+  /// Get creation timestamp as DateTime
+  DateTime get createdAt => DateTime.fromMillisecondsSinceEpoch(createdAtMs.toInt());
 
-  /// Creation timestamp (milliseconds since epoch)
-  final int createdAtMs;
+  /// Encodes to binary protobuf format
+  Uint8List toBytes() => Uint8List.fromList(writeToBuffer());
 
-  /// Indicates if content was compressed before encryption
-  final bool isCompressed;
+  /// Get content type as enum
+  MessageContentType get contentTypeEnum => MessageContentType.values[
+    contentType.clamp(0, MessageContentType.values.length - 1)
+  ];
 
-  /// Content type
-  final MessageContentType contentType;
+  /// Get file name or null if not set
+  String? get fileNameOrNull => hasFileName() ? fileName : null;
 
-  /// File name (for files and images)
-  final String? fileName;
+  /// Get MIME type or null if not set
+  String? get mimeTypeOrNull => hasMimeType() ? mimeType : null;
 
-  /// MIME type of the file
-  final String? mimeType;
+  /// Get content as Uint8List
+  Uint8List get contentBytes => Uint8List.fromList(content);
+}
 
-  EncryptedMetadata({
-    required this.senderId,
-    required this.createdAtMs,
-    required this.isCompressed,
-    required this.contentType,
-    this.fileName,
-    this.mimeType,
-  });
+/// Helper function to create EncryptedMessageProto with typed parameters
+EncryptedMessageProto createEncryptedMessageProto({
+  required String senderId,
+  required int createdAtMs,
+  required bool isCompressed,
+  required MessageContentType contentType,
+  String? fileName,
+  String? mimeType,
+  required Uint8List content,
+}) {
+  return EncryptedMessageProto(
+    senderId: senderId,
+    createdAtMs: Int64(createdAtMs),
+    isCompressed: isCompressed,
+    contentType: contentType.index,
+    fileName: fileName,
+    mimeType: mimeType,
+    content: content,
+  );
+}
 
-  DateTime get createdAt => DateTime.fromMillisecondsSinceEpoch(createdAtMs);
+/// Helper function to decode EncryptedMessageProto from bytes
+EncryptedMessageProto decodeEncryptedMessageProto(Uint8List bytes) {
+  return EncryptedMessageProto.fromBuffer(bytes);
 }
 
 /// Represents a message encrypted with One-Time Pad.
@@ -68,7 +84,7 @@ class EncryptedMetadata {
 /// The keyId is implicit because a message belongs to a conversation that has a single key.
 ///
 /// All sensitive metadata (senderId, createdAt, fileName, mimeType, isCompressed)
-/// are in the encrypted part (EncryptedMetadata).
+/// are in the encrypted part (EncryptedMessageProto).
 class EncryptedMessage {
   /// Unique key segment used (startByte inclusive, lengthBytes length)
   /// Also serves as unique identifier: "startByte-endByte"
@@ -85,35 +101,35 @@ class EncryptedMessage {
 
   // === Decrypted fields (filled after decryption) ===
 
-  /// Decrypted metadata (null if not yet decrypted)
-  EncryptedMetadata? _decryptedMetadata;
+  /// Decrypted protobuf message (null if not yet decrypted)
+  EncryptedMessageProto? _decryptedProto;
 
   EncryptedMessage({
     required this.keySegment,
     required this.ciphertext,
     Set<String>? ackSet,
-    EncryptedMetadata? decryptedMetadata,
+    EncryptedMessageProto? decryptedMetadata,
   }) : ackSet = ackSet ?? {},
-       _decryptedMetadata = decryptedMetadata;
+       _decryptedProto = decryptedMetadata;
 
   /// Unique message ID (derived from key segment)
   String get id => '${keySegment.startByte}-${keySegment.startByte + keySegment.lengthBytes}';
 
-  /// Access to decrypted metadata
-  EncryptedMetadata? get metadata => _decryptedMetadata;
+  /// Access to decrypted protobuf
+  EncryptedMessageProto? get metadata => _decryptedProto;
 
   /// Sets metadata after decryption
-  void setDecryptedMetadata(EncryptedMetadata metadata) {
-    _decryptedMetadata = metadata;
+  void setDecryptedMetadata(EncryptedMessageProto proto) {
+    _decryptedProto = proto;
   }
 
   /// Shortcuts to metadata (for compatibility)
-  String get senderId => _decryptedMetadata?.senderId ?? '';
-  DateTime get createdAt => _decryptedMetadata?.createdAt ?? DateTime.now();
-  bool get isCompressed => _decryptedMetadata?.isCompressed ?? false;
-  MessageContentType get contentType => _decryptedMetadata?.contentType ?? MessageContentType.text;
-  String? get fileName => _decryptedMetadata?.fileName;
-  String? get mimeType => _decryptedMetadata?.mimeType;
+  String get senderId => _decryptedProto?.senderId ?? '';
+  DateTime get createdAt => _decryptedProto?.createdAt ?? DateTime.now();
+  bool get isCompressed => _decryptedProto?.isCompressed ?? false;
+  MessageContentType get contentType => _decryptedProto?.contentTypeEnum ?? MessageContentType.text;
+  String? get fileName => _decryptedProto?.fileNameOrNull;
+  String? get mimeType => _decryptedProto?.mimeTypeOrNull;
 
   /// Index of first used byte
   int get startByte => keySegment.startByte;
@@ -194,9 +210,9 @@ class EncryptedMessage {
 
   @override
   String toString() {
-    final meta = _decryptedMetadata;
-    if (meta != null) {
-      return 'EncryptedMessage($id from ${meta.senderId}, ${ciphertext.length} bytes, ${meta.contentType.name}${meta.isCompressed ? ', compressed' : ''})';
+    final proto = _decryptedProto;
+    if (proto != null) {
+      return 'EncryptedMessage($id from ${proto.senderId}, ${ciphertext.length} bytes, ${proto.contentTypeEnum.name}${proto.isCompressed ? ', compressed' : ''})';
     }
     return 'EncryptedMessage($id, ${ciphertext.length} bytes, encrypted)';
   }

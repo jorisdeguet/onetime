@@ -6,7 +6,6 @@ import 'package:onetime/models/firestore/fs_message.dart';
 import 'compression_service.dart';
 import '../models/local/key_interval.dart';
 import '../models/local/shared_key.dart';
-import 'metadata_proto.dart';
 
 class CryptoService {
   /// Compression service
@@ -133,7 +132,7 @@ class CryptoService {
     String? mimeType,
   }) {
     // Create protobuf message with metadata + content
-    final proto = EncryptedMessageProto(
+    final proto = createEncryptedMessageProto(
       senderId: senderId,
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       isCompressed: isCompressed,
@@ -161,21 +160,11 @@ class CryptoService {
     // XOR complete protobuf with OTP key
     final ciphertext = _xor(payload, keyBytes);
 
-    // Create metadata for EncryptedMessage compatibility
-    final metadata = EncryptedMetadata(
-      senderId: senderId,
-      createdAtMs: proto.createdAtMs,
-      isCompressed: isCompressed,
-      contentType: contentType,
-      fileName: fileName,
-      mimeType: mimeType,
-    );
-
-    // Create encrypted message
+    // Create encrypted message (keep proto for local access)
     final encryptedMessage = EncryptedMessage(
       keySegment: (startByte: seg.startByte, lengthBytes: seg.lengthBytes),
       ciphertext: ciphertext,
-      decryptedMetadata: metadata, // Keep metadata locally
+      decryptedMetadata: proto, // Keep protobuf locally
     );
 
     return (message: encryptedMessage, usedSegment: seg);
@@ -199,21 +188,13 @@ class CryptoService {
     final decryptedProtoBytes = _xor(encryptedMessage.ciphertext, keyBytes);
 
     // Deserialize protobuf
-    final proto = EncryptedMessageProto.fromBytes(decryptedProtoBytes);
+    final proto = decodeEncryptedMessageProto(decryptedProtoBytes);
 
-    // Create metadata for EncryptedMessage
-    final metadata = EncryptedMetadata(
-      senderId: proto.senderId,
-      createdAtMs: proto.createdAtMs,
-      isCompressed: proto.isCompressed,
-      contentType: proto.contentType,
-      fileName: proto.fileName,
-      mimeType: proto.mimeType,
-    );
-    encryptedMessage.setDecryptedMetadata(metadata);
+    // Store decrypted proto in message
+    encryptedMessage.setDecryptedMetadata(proto);
 
     // Return message content
-    return proto.content;
+    return proto.contentBytes;
   }
 }
 
