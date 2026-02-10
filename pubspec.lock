@@ -234,7 +234,7 @@ packages:
     source: hosted
     version: "0.3.5+2"
   crypto:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: crypto
       sha256: c8ea0233063ba03258fbcf2ca4d6dadfefe14f02fab57702265467a19f27fadf
@@ -378,7 +378,7 @@ packages:
     source: hosted
     version: "3.4.0"
   fixnum:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: fixnum
       sha256: b6dc7065e46c974bc7c5f143080a6764ec7a4be6da1285ececdc37be96de53be
@@ -718,7 +718,7 @@ packages:
     source: hosted
     version: "3.2.1"
   path:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: path
       sha256: "75cca69d1490965be98c73ceaea117e8a04dd21217b37b292c9ddbec0d955bc5"
@@ -813,6 +813,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.0.3"
+  protobuf:
+    dependency: "direct main"
+    description:
+      name: protobuf
+      sha256: "68645b24e0716782e58948f8467fd42a880f255096a821f9e7d0ec625b00c84d"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.1.0"
+  protoc_plugin:
+    dependency: "direct dev"
+    description:
+      name: protoc_plugin
+      sha256: fb0554851c9eca30bd18405fbbfe81e39166d4a2f0e5b770606fd69da3da0b2f
+      url: "https://pub.dev"
+    source: hosted
+    version: "21.1.2"
   pub_semver:
     dependency: transitive
     description:

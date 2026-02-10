@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package onetime;
+
+// Complete message encrypted with One-Time Pad
+// This data is serialized to protobuf, then encrypted (XOR with OTP key)
+// Final format: protobuf_bytes XOR key_bytes
+message EncryptedMessageProto {
+  // Sender ID
+  string sender_id = 1;
+
+  // Creation timestamp (milliseconds since epoch)
+  int64 created_at_ms = 2;
+
+  // Indicates if content was compressed before encryption
+  bool is_compressed = 3;
+
+  // Content type (0=text, 1=image, 2=file)
+  int32 content_type = 4;
+
+  // File name (optional, for files and images)
+  string file_name = 5;
+
+  // MIME type of the file (optional)
+  string mime_type = 6;
+
+  // Message content (UTF-8 text or binary)
+  bytes content = 7;
+}
+

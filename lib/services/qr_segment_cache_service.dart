@@ -1,11 +1,11 @@
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
-import 'package:onetime/key_exchange/key_service.dart';
+import 'package:onetime/services/key_service.dart';
 
 import 'app_logger.dart';
 
-/// Service pour pré-générer et cacher les segments QR
+/// Service to pre-generate and cache QR segments
 class QrSegmentCacheService {
   static final QrSegmentCacheService _instance = QrSegmentCacheService._internal();
   factory QrSegmentCacheService() => _instance;

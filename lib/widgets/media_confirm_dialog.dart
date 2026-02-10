@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:onetime/convo/encrypted_message.dart';
+import 'package:onetime/models/firestore/fs_message.dart';
 
 import '../services/media_service.dart';
 
-/// Dialogue de confirmation pour l'envoi d'un média (image ou fichier).
+/// Confirmation dialog for sending media (image or file).
 ///
-/// Affiche les informations sur la taille du fichier, les bits de clé nécessaires,
-/// et permet de choisir la qualité pour les images.
+/// Displays file size information, required key bits,
+/// and allows choosing quality for images.
 class MediaConfirmDialog extends StatefulWidget {
   final MediaPickResult mediaResult;
   final int availableKeyBits;

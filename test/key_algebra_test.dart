@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:onetime/key_exchange/key_history.dart';
-import 'package:onetime/key_exchange/key_interval.dart';
+import 'package:onetime/models/local/key_history.dart';
+import 'package:onetime/models/local/key_interval.dart';
 
 void main() {
   group('KeyInterval Algebra', () {

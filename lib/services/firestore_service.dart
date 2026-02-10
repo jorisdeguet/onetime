@@ -2,12 +2,13 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import '../convo/conversation.dart';
-import '../convo/encrypted_message.dart';
-import '../key_exchange/key_pre_generation_service.dart';
+import '../models/firestore/fs_conversation.dart';
+import '../models/firestore/fs_key_status.dart';
+import '../models/firestore/fs_message.dart';
+import 'key_pre_generation_service.dart';
 import 'app_logger.dart';
 
-/// Service de gestion des conversations sur Firebase.
+/// Firebase conversation management service.
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final String localUserId;
@@ -15,37 +16,33 @@ class FirestoreService {
 
   FirestoreService({required this.localUserId});
 
-  /// Collection des conversations
+  /// Conversations collection
   CollectionReference<Map<String, dynamic>> get _conversationsRef =>
       _firestore.collection('conversations');
 
-  /// Collection des messages d'une conversation
+  /// Messages collection for a conversation
   CollectionReference<Map<String, dynamic>> _messagesRef(String conversationId) =>
       _conversationsRef.doc(conversationId).collection('messages');
 
   // ==================== CONVERSATIONS ====================
 
-  /// Crée une nouvelle conversation (en état "joining")
+  /// Creates a new conversation (in "joining" state)
   Future<Conversation> createConversation({
     required List<String> peerIds,
     ConversationState state = ConversationState.joining,
   }) async {
     _log.d('Conversation', 'createConversation: peerIds=$peerIds, state=$state');
 
-    // S'assurer que l'utilisateur local est inclus
+    // Ensure local user is included
     final allPeers = {...peerIds, localUserId}.toList()..sort();
-    
     final conversationId = _generateConversationId();
-    
     final conversation = Conversation(
       id: conversationId,
       peerIds: allPeers,
       state: state,
     );
-
     await _conversationsRef.doc(conversationId).set(conversation.toFirestore());
     _log.i('Conversation', 'Conversation created: $conversationId');
-
 
     try {
       KeyPreGenerationService().initialize();
@@ -57,7 +54,7 @@ class FirestoreService {
     return conversation;
   }
 
-  /// Change l'état d'une conversation
+  /// Changes conversation state
   Future<void> setConversationState(String conversationId, ConversationState state) async {
     _log.d('Conversation', 'setConversationState: $conversationId -> $state');
     await _conversationsRef.doc(conversationId).update({
@@ -65,12 +62,12 @@ class FirestoreService {
     });
   }
 
-  /// Passe la conversation en mode "exchanging" (échange de clé en cours)
+  /// Sets conversation to "exchanging" mode (key exchange in progress)
   Future<void> startKeyExchange(String conversationId) async {
     await setConversationState(conversationId, ConversationState.exchanging);
   }
 
-  /// Passe la conversation en mode "ready" (prête à utiliser)
+  /// Sets conversation to "ready" mode (ready to use)
   Future<void> markConversationReady(String conversationId, int totalKeyBytes) async {
     _log.d('Conversation', 'markConversationReady: $conversationId, totalKeyBytes=$totalKeyBytes');
     await _conversationsRef.doc(conversationId).update({
@@ -79,14 +76,14 @@ class FirestoreService {
     });
   }
 
-  /// Récupère une conversation par ID
+  /// Gets a conversation by ID
   Future<Conversation?> getConversation(String id) async {
     final doc = await _conversationsRef.doc(id).get();
     if (!doc.exists) return null;
     return Conversation.fromFirestore(doc.data()!);
   }
 
-  /// Récupère toutes les conversations de l'utilisateur
+  /// Gets all user conversations
   Future<List<Conversation>> getUserConversations() async {
     final query = await _conversationsRef
         .where('peerIds', arrayContains: localUserId)
@@ -98,7 +95,7 @@ class FirestoreService {
         .toList();
   }
 
-  /// Stream des conversations de l'utilisateur
+  /// Stream of user conversations
   Stream<List<Conversation>> watchUserConversations() {
     return _conversationsRef
         .where('peerIds', arrayContains: localUserId)
@@ -109,7 +106,7 @@ class FirestoreService {
             .toList());
   }
 
-  /// Stream d'une conversation spécifique
+  /// Stream of a specific conversation
   Stream<Conversation?> watchConversation(String conversationId) {
     return _conversationsRef.doc(conversationId).snapshots().map((doc) {
       if (!doc.exists) return null;
@@ -117,10 +114,9 @@ class FirestoreService {
     });
   }
 
-
-  /// Renomme une conversation
+  /// Renames a conversation
   Future<void> renameConversation(String conversationId, String newName) async {
-    // Cette fonctionnalité n'est plus supportée dans le modèle
+    // This feature is no longer supported in the model
     // await _conversationsRef.doc(conversationId).update({'name': newName});
   }
 
@@ -134,32 +130,32 @@ class FirestoreService {
     });
   }
 
-  /// Met à jour les infos de debug de la clé pour un utilisateur
+  /// Updates key debug info for a user
   Future<void> updateKeyDebugInfo({
     required String conversationId,
     required String userId,
-    required Map<String, dynamic> info,
+    required FsKeyStatus keyStatus,
   }) async {
     _log.d('Conversation', 'updateKeyDebugInfo: $conversationId, user=$userId');
-    // Utiliser dot notation pour mettre à jour un champ spécifique de la map
+    // Use dot notation to update a specific field in the map
     await _conversationsRef.doc(conversationId).update({
-      'keyDebugInfo.$userId': info,
+      'keyDebugInfo.$userId': keyStatus.toFirestore(),
     });
   }
 
-  /// Supprime une conversation (et tous ses messages)
+  /// Deletes a conversation (and all its messages)
   Future<void> deleteConversation(String conversationId) async {
     _log.d('Conversation', 'deleteConversation: $conversationId');
 
-    // Supprimer tous les messages d'abord
+    // Delete all messages first
     final messages = await _messagesRef(conversationId).get();
     final batch = _firestore.batch();
     for (final doc in messages.docs) {
       batch.delete(doc.reference);
     }
     await batch.commit();
-    
-    // Supprimer les sessions d'échange de clé associées
+
+    // Delete associated key exchange sessions
     final sessions = await _firestore
         .collection('key_exchange_sessions')
         .where('conversationId', isEqualTo: conversationId)
@@ -168,7 +164,7 @@ class FirestoreService {
       await doc.reference.delete();
     }
 
-    // Supprimer la conversation
+    // Delete the conversation
     await _conversationsRef.doc(conversationId).delete();
 
     _log.i('Conversation', 'Conversation deleted: $conversationId');
@@ -176,7 +172,7 @@ class FirestoreService {
 
   // ==================== MESSAGES ====================
 
-  /// Envoie un message chiffré
+  /// Sends an encrypted message
   Future<void> sendMessage({
     required String conversationId,
     required EncryptedMessage message,
@@ -186,11 +182,11 @@ class FirestoreService {
     _log.d('Conversation', 'sendMessage: messageId=${message.id}');
 
     try {
-      // Ajouter le message
+      // Add the message
       _log.d('Conversation', 'Adding message to Firestore...');
-      final messageData = message.toJson();
-      
-      await _messagesRef(conversationId).doc(message.id).set(messageData); // TODO move to message Service ??
+      final messageData = message.toFirestore();
+
+      await _messagesRef(conversationId).doc(message.id).set(messageData);
       _log.i('Conversation', 'Message added successfully');
     } catch (e, stackTrace) {
       _log.e('Conversation', 'ERROR in sendMessage: $e');
@@ -199,84 +195,85 @@ class FirestoreService {
     }
   }
 
-  /// Récupère les messages d'une conversation
+  /// Gets messages from a conversation
   Future<List<EncryptedMessage>> getMessages({
     required String conversationId,
     int? limit,
     DateTime? before,
   }) async {
     Query<Map<String, dynamic>> query = _messagesRef(conversationId)
-        .orderBy('createdAt', descending: true);
+        .orderBy('serverTimestamp', descending: true);
 
     if (before != null) {
-      query = query.where('createdAt', isLessThan: Timestamp.fromDate(before));
+      query = query.where('serverTimestamp', isLessThan: Timestamp.fromDate(before));
     }
-    
+
     if (limit != null) {
       query = query.limit(limit);
     }
 
     final snapshot = await query.get();
     return snapshot.docs
-        .map((doc) => EncryptedMessage.fromJson(doc.data()))
+        .map((doc) => EncryptedMessage.fromFirestore(doc.data(), documentId: doc.id))
         .toList();
   }
 
-  /// Stream des messages d'une conversation
+  /// Stream of messages from a conversation
   Stream<List<EncryptedMessage>> watchMessages(String conversationId) {
     return _messagesRef(conversationId)
-        .orderBy('createdAt', descending: false)
+        .orderBy('serverTimestamp', descending: false)
         .snapshots()
         .map((snapshot) => snapshot.docs
-            .map((doc) => EncryptedMessage.fromJson(doc.data()))
+            .map((doc) => EncryptedMessage.fromFirestore(doc.data(), documentId: doc.id))
             .toList());
   }
 
-  /// Marque un message comme transféré par l'utilisateur local
-  /// Supprime le contenu (ciphertext) si tous les participants l'ont transféré
-  /// IMPORTANT: N'appelez cette méthode qu'APRÈS avoir sauvegardé le message localement
-  Future<void> markMessageAsTransferred({
+  /// Adds an anonymous acknowledgment to a message
+  /// The ackId is a random identifier that doesn't reveal WHO added it
+  Future<void> addMessageAck({
     required String conversationId,
     required String messageId,
-    // required List<String> allParticipants,
+    required String ackId,
   }) async {
     final docRef = _messagesRef(conversationId).doc(messageId);
     final conversation = await getConversation(conversationId);
+
     await _firestore.runTransaction((transaction) async {
       final doc = await transaction.get(docRef);
       if (!doc.exists) return;
 
       final data = doc.data()!;
-      final transferredBy = List<String>.from(data['transferredBy'] as List? ?? []);
+      final ackSet = Set<String>.from(data['ackSet'] as List? ?? []);
 
-      if (!transferredBy.contains(localUserId)) {
-        transferredBy.add(localUserId);
+      if (!ackSet.contains(ackId)) {
+        ackSet.add(ackId);
       }
 
-      // Vérifier si tous les participants ont transféré
-      final allTransferred = conversation!.peerIds.every((p) => transferredBy.contains(p));
+      // Check if all participants have acknowledged (ack count >= participant count)
+      final allAcked = ackSet.length >= conversation!.peerIds.length;
 
-      if (allTransferred) {
-        // Supprimer le contenu chiffré (garder les métadonnées pour le statut de lecture)
-        // SÉCURITÉ: Le ciphertext n'est supprimé que si TOUS les participants l'ont téléchargé
+      if (allAcked) {
+        // Delete encrypted content (keep metadata for status)
+        // SECURITY: Ciphertext is only deleted if ALL participants have downloaded it
         transaction.update(docRef, {
-          'transferredBy': transferredBy,
-          'ciphertext': '', // Vider le ciphertext
+          'ackSet': ackSet.toList(),
+          'ciphertext': '', // Clear ciphertext
         });
-        _log.d('Conversation', 'Message $messageId ciphertext deleted (all transferred)');
+        _log.d('Conversation', 'Message $messageId ciphertext deleted (all acked)');
       } else {
         transaction.update(docRef, {
-          'transferredBy': transferredBy,
+          'ackSet': ackSet.toList(),
         });
       }
     });
   }
 
-  /// Marque un message comme lu et vérifie si on peut le supprimer complètement
+  /// Marks a message as read (via anonymous ack) and checks if we can delete it
+  /// Note: For real deletion, we need to wait for enough read acks
   Future<void> markMessageAsReadAndCleanup({
     required String conversationId,
     required String messageId,
-    required List<String> allParticipants,
+    required int expectedAckCount,
   }) async {
     final docRef = _messagesRef(conversationId).doc(messageId);
 
@@ -285,33 +282,25 @@ class FirestoreService {
       if (!doc.exists) return;
 
       final data = doc.data()!;
-      final readBy = List<String>.from(data['readBy'] as List? ?? []);
+      final ackSet = Set<String>.from(data['ackSet'] as List? ?? []);
 
-      if (!readBy.contains(localUserId)) {
-        readBy.add(localUserId);
-      }
-
-      // Vérifier si tous les participants ont lu
-      final allRead = allParticipants.every((p) => readBy.contains(p));
+      // Check if we have enough acks to consider all have read
+      final allRead = ackSet.length >= expectedAckCount;
 
       if (allRead) {
-        // Supprimer complètement le message
+        // Delete message completely
         transaction.delete(docRef);
-        _log.d('Conversation', 'Message $messageId deleted (all read)');
-      } else {
-        transaction.update(docRef, {
-          'readBy': readBy,
-        });
+        _log.d('Conversation', 'Message $messageId deleted (all acks received)');
       }
     });
   }
 
-  /// Supprime un message (mode ultra-secure)
+  /// Deletes a message (ultra-secure mode)
   Future<void> deleteMessage(String conversationId, String messageId) async {
     await _messagesRef(conversationId).doc(messageId).delete();
   }
 
-  // ==================== UTILITAIRES ====================
+  // ==================== UTILITIES ====================
 
   String _generateConversationId() {
     return 'conv_${DateTime.now().millisecondsSinceEpoch}_$localUserId';

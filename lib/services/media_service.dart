@@ -4,12 +4,12 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
-import 'package:onetime/convo/encrypted_message.dart';
+import 'package:onetime/models/firestore/fs_message.dart';
 
 import 'app_logger.dart';
 import 'format_service.dart';
 
-/// Service pour la gestion des médias (images et fichiers).
+/// Service for media management (images and files).
 class MediaService {
   final ImagePicker _imagePicker = ImagePicker();
   final _log = AppLogger();

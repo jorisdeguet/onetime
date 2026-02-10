@@ -23,7 +23,7 @@ This project uses Firebase for backend services. Follow these steps to configure
    
    This will:
    - Connect to your Firebase project
-   - Generate `lib/firebase_options.dart`
+   - Generate `lib /firebase_options.dart`
    - Create/update `android/app/google-services.json`
    - Create/update `ios/Runner/GoogleService-Info.plist`
 
