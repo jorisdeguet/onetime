@@ -34,6 +34,11 @@ class _DisplayMessage {
 
   final bool isCompressed;
 
+  // Cloud status (from local storage, updated by MessageService)
+  final bool existsInCloud;
+  final bool hasCloudContent;
+  final bool allRead;
+
   _DisplayMessage({
     required this.id,
     required this.senderId,
@@ -44,10 +49,13 @@ class _DisplayMessage {
     this.fileName,
     this.mimeType,
     this.isCompressed = false,
+    this.existsInCloud = true,
+    this.hasCloudContent = true,
+    this.allRead = false,
   });
 
-  /// Crée depuis un message local déchiffré
-  factory _DisplayMessage.fromLocal(DecryptedMessageData local) {
+  /// Crée depuis un message local déchiffré (inclut le statut cloud)
+  factory _DisplayMessage.fromLocal(LocalMessage local) {
     return _DisplayMessage(
       id: local.id,
       senderId: local.senderId,
@@ -58,6 +66,9 @@ class _DisplayMessage {
       fileName: local.fileName,
       mimeType: local.mimeType,
       isCompressed: local.isCompressed,
+      existsInCloud: local.existsInCloud,
+      hasCloudContent: local.hasCloudContent,
+      allRead: local.allRead,
     );
   }
 }
@@ -164,11 +175,11 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
 
   Stream<List<_DisplayMessage>> _getCombinedMessagesStream() async* {
     try {
+      // Only use local messages - cloud status is stored locally by MessageService
       await for (final localMessages in _messageService.watchConversationMessages(widget.conversation.id)) {
-        final combined = <_DisplayMessage>[];
-        for (final local in localMessages) {
-          combined.add(_DisplayMessage.fromLocal(local));
-        }
+        final combined = localMessages
+            .map((local) => _DisplayMessage.fromLocal(local))
+            .toList();
         combined.sort((a, b) => a.createdAt.compareTo(b.createdAt));
         yield combined;
       }
@@ -613,11 +624,10 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
                           isMine: isMine,
                           senderName: senderName,
                           onMessageRead: (messageId) async {
-                            // Mark as read and potentially delete
-                            await _conversationService.markMessageAsReadAndCleanup(
-                              conversationId: widget.conversation.id,
-                              messageId: messageId,
-                              expectedAckCount: widget.conversation.peerIds.length,
+                            // Mark as read and potentially delete from cloud
+                            await _messageService.markMessageAsRead(
+                              widget.conversation.id,
+                              messageId,
                             );
                           },
                         );
@@ -782,7 +792,7 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
 
 /// Adapter widget to display either a local decrypted message (_DisplayMessage)
 /// or wrap the encrypted `_MessageBubble` when the message is from Firestore.
-class _MessageBubbleNew extends StatelessWidget {
+class _MessageBubbleNew extends StatefulWidget {
   final _DisplayMessage message;
   final bool isMine;
   final String? senderName;
@@ -796,7 +806,71 @@ class _MessageBubbleNew extends StatelessWidget {
   });
 
   @override
+  State<_MessageBubbleNew> createState() => _MessageBubbleNewState();
+}
+
+class _MessageBubbleNewState extends State<_MessageBubbleNew> {
+  bool _hasNotifiedRead = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Notify that message has been read when widget is displayed
+    _notifyMessageRead();
+  }
+
+  @override
+  void didUpdateWidget(_MessageBubbleNew oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // If message changed, notify read again
+    if (oldWidget.message.id != widget.message.id) {
+      _hasNotifiedRead = false;
+      _notifyMessageRead();
+    }
+  }
+
+  void _notifyMessageRead() {
+    // Only notify once per message and only for messages not sent by me
+    if (!_hasNotifiedRead && !widget.isMine && widget.onMessageRead != null) {
+      _hasNotifiedRead = true;
+      // Call asynchronously to not block the build
+      Future.microtask(() {
+        widget.onMessageRead?.call(widget.message.id);
+      });
+    }
+  }
+
+  /// Builds the cloud status icon
+  Widget _buildStatusIcon() {
+    if (widget.message.existsInCloud) {
+      if (widget.message.hasCloudContent) {
+        // Cloud with content - filled cloud icon
+        return const Tooltip(
+          message: 'Contenu chiffré dans le cloud',
+          child: Icon(Icons.cloud, size: 14, color: Colors.grey),
+        );
+      } else {
+        // Cloud without content - outlined cloud icon
+        return const Tooltip(
+          message: 'Cloud (contenu supprimé)',
+          child: Icon(Icons.cloud_outlined, size: 14, color: Colors.grey),
+        );
+      }
+    } else {
+      // Only local - lock icon (safe)
+      return const Tooltip(
+        message: 'Stocké localement uniquement',
+        child: Icon(Icons.lock_outline, size: 14, color: Colors.green),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final message = widget.message;
+    final isMine = widget.isMine;
+    final senderName = widget.senderName;
+
     // If the message is stored locally (decrypted), present it directly.
 
     if (message.contentType == MessageContentType.text) {
@@ -808,6 +882,7 @@ class _MessageBubbleNew extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
           child: Row(
             mainAxisAlignment: isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               if (!isMine) CircleAvatar(radius: 14, child: Text((senderName ?? '').substring(0,1))),
               const SizedBox(width: 8),
@@ -826,6 +901,8 @@ class _MessageBubbleNew extends StatelessWidget {
                   ],
                 ),
               ),
+              const SizedBox(width: 4),
+              _buildStatusIcon(),
             ],
           ),
         );
@@ -835,6 +912,7 @@ class _MessageBubbleNew extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         child: Row(
           mainAxisAlignment: isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             if (!isMine)
               CircleAvatar(radius: 14, child: Text(senderName?.substring(0,1) ?? '')),
@@ -854,6 +932,8 @@ class _MessageBubbleNew extends StatelessWidget {
                 ),
               ),
             ),
+            const SizedBox(width: 4),
+            _buildStatusIcon(),
           ],
         ),
       );
@@ -865,6 +945,7 @@ class _MessageBubbleNew extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         child: Row(
           mainAxisAlignment: isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             if (!isMine)
               CircleAvatar(radius: 14, child: Text((senderName ?? '').substring(0, 1))),
@@ -873,6 +954,8 @@ class _MessageBubbleNew extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
               child: Image.memory(message.binaryContent!, width: 180, fit: BoxFit.cover),
             ),
+            const SizedBox(width: 4),
+            _buildStatusIcon(),
           ],
         ),
       );
@@ -881,7 +964,15 @@ class _MessageBubbleNew extends StatelessWidget {
     // Fallback simple view for other local messages
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-      child: Text(message.textContent ?? ''),
+      child: Row(
+        mainAxisAlignment: isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(message.textContent ?? ''),
+          const SizedBox(width: 4),
+          _buildStatusIcon(),
+        ],
+      ),
     );
 
   }

@@ -53,7 +53,7 @@ class MessageContentTypeConverter implements JsonConverter<MessageContentType, S
 
 /// Represents a decrypted message stored locally
 @JsonSerializable()
-class DecryptedMessageData {
+class LocalMessage {  // TODO rename LocalMessage
   final String id;
   final String senderId;
   final DateTime createdAt;
@@ -71,7 +71,15 @@ class DecryptedMessageData {
   final int? keySegmentStart;
   final int? keySegmentEnd;
 
-  DecryptedMessageData({
+  // Cloud status - updated by MessageService
+  // true if the message still exists in Firestore
+  final bool existsInCloud;
+  // true if the ciphertext is still present (not yet transferred by all)
+  final bool hasCloudContent;
+  // true if all participants have read (all R acks received)
+  final bool allRead;
+
+  LocalMessage({
     required this.id,
     required this.senderId,
     required this.createdAt,
@@ -83,9 +91,36 @@ class DecryptedMessageData {
     this.isCompressed = false,
     this.keySegmentStart,
     this.keySegmentEnd,
+    this.existsInCloud = true,
+    this.hasCloudContent = true,
+    this.allRead = false,
   });
 
-  factory DecryptedMessageData.fromJson(Map<String, dynamic> json) =>
+  /// Creates a copy with updated cloud status
+  LocalMessage copyWith({
+    bool? existsInCloud,
+    bool? hasCloudContent,
+    bool? allRead,
+  }) {
+    return LocalMessage(
+      id: id,
+      senderId: senderId,
+      createdAt: createdAt,
+      contentType: contentType,
+      textContent: textContent,
+      binaryContent: binaryContent,
+      fileName: fileName,
+      mimeType: mimeType,
+      isCompressed: isCompressed,
+      keySegmentStart: keySegmentStart,
+      keySegmentEnd: keySegmentEnd,
+      existsInCloud: existsInCloud ?? this.existsInCloud,
+      hasCloudContent: hasCloudContent ?? this.hasCloudContent,
+      allRead: allRead ?? this.allRead,
+    );
+  }
+
+  factory LocalMessage.fromJson(Map<String, dynamic> json) =>
       _$DecryptedMessageDataFromJson(json);
 
   Map<String, dynamic> toJson() => _$DecryptedMessageDataToJson(this);

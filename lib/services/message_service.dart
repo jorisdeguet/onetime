@@ -13,6 +13,7 @@ import 'package:onetime/models/local/shared_key.dart';
 import 'package:onetime/services/app_logger.dart';
 import 'package:onetime/services/firestore_service.dart';
 import 'package:onetime/services/crypto_service.dart';
+import 'package:onetime/services/compression_service.dart';
 
 import 'package:onetime/services/local_storage_service.dart';
 import 'package:onetime/services/media_service.dart';
@@ -140,11 +141,12 @@ class MessageService {
   /// - Mise à jour des octets utilisés
   /// - Envoi sur Firestore
   /// - Ajout d'un ack anonyme pour le transfert
+  /// - Ajout d'un ack de lecture (l'expéditeur a déjà "lu" son message)
   Future<void> _postProcessMessage({
     required String conversationId,
     required EncryptedMessage message,
     required KeyInterval usedSegment,
-    required DecryptedMessageData localData,
+    required LocalMessage localData,
   }) async {
     // Store decrypted message locally FIRST
     await _messageStorage.saveDecryptedMessage(
@@ -159,11 +161,16 @@ class MessageService {
       usedSegment.endIndex,
     );
 
-    // Générer un ack anonyme pour cet envoi
-    final ackId = _generateAnonymousAckId();
-    message.addAck(ackId);
-    // Sauvegarder notre ackId localement pour pouvoir le retrouver plus tard
-    await _saveLocalAckId(conversationId, message.id, ackId);
+    // Générer un ack anonyme pour le transfert (T)
+    final transferAckId = _generateAnonymousAckId();
+    message.addAck(transferAckId);
+
+    // Générer un ack de lecture (R) - l'expéditeur a déjà "lu" son propre message
+    final readAckId = _generateDeterministicAckId(message.id, 'read');
+    message.addAck(readAckId);
+
+    // Sauvegarder notre ackId de transfert localement pour pouvoir le retrouver plus tard
+    await _saveLocalAckId(conversationId, message.id, transferAckId);
 
     // Envoyer sur Firestore (senderId est dans les métadonnées chiffrées)
     _log.d('MessageService', 'Calling conversationService.sendMessage...');
@@ -176,6 +183,8 @@ class MessageService {
     await updateKeyDebugInfo(conversationId);
   }
 
+  /// Generates an anonymous ack ID for transfer acknowledgment
+  /// Prefixed with 'T' to distinguish from read acks
   String _generateAnonymousAckId() {
     // Get a secure random number
     final random = Random.secure();
@@ -184,7 +193,21 @@ class MessageService {
     // Hash with SHA256
     final bytes = utf8.encode(input);
     final digest = sha256.convert(bytes);
-    return base64Url.encode(digest.bytes).substring(0, 16);
+    // Prefix with T for Transfer ack
+    return 'T${base64Url.encode(digest.bytes).substring(0, 15)}';
+  }
+
+  /// Generates a deterministic ack ID for a specific message and type (e.g. 'read')
+  /// This ensures the same user always generates the same ackId for a given message
+  /// Prefixed with 'R' for read acks to distinguish from transfer acks
+  String _generateDeterministicAckId(String messageId, String type) {
+    final random = Random.secure();
+    final randomInt = random.nextInt(1000000000);
+    final input = "${randomInt}_${messageId}_$type";
+    final bytes = utf8.encode(input);
+    final digest = sha256.convert(bytes);
+    // Prefix with R for Read ack
+    return 'R${base64Url.encode(digest.bytes).substring(0, 15)}';
   }
 
   final _localStorage = LocalStorageService();
@@ -218,7 +241,7 @@ class MessageService {
           conversationId: conversationID,
           message: result.message,
           usedSegment: result.usedSegment,
-          localData: DecryptedMessageData(
+          localData: LocalMessage(
             id: result.message.id,
             senderId: _authService.currentUserId!,
             createdAt: result.message.createdAt,
@@ -249,7 +272,7 @@ class MessageService {
           conversationId: conversationId,
           message: result.message,
           usedSegment: result.usedSegment,
-          localData: DecryptedMessageData(
+          localData: LocalMessage(
             id: result.message.id,
             senderId: _authService.currentUserId!,
             createdAt: result.message.createdAt,
@@ -436,42 +459,52 @@ class MessageService {
       final int keySegmentStartByte = msg.keySegment.startByte;
       final int keySegmentEndByte = msg.keySegment.startByte + msg.keySegment.lengthBytes;
 
-      if (msg.contentType == MessageContentType.text) {
-        final decrypted = crypto.decrypt(encryptedMessage: msg, sharedKey: key, markAsUsed: true);
-        // Après déchiffrement, msg.metadata contient les métadonnées déchiffrées
-        final senderId = msg.senderId; // maintenant disponible après déchiffrement
-        final createdAt = msg.createdAt;
+      // First, decrypt as binary to get metadata (contentType is inside encrypted data)
+      final decryptedBin = crypto.decryptBinary(encryptedMessage: msg, sharedKey: key, markAsUsed: true);
+
+      // Now msg.metadata is available with the real contentType
+      final senderId = msg.senderId;
+      final createdAt = msg.createdAt;
+      final contentType = msg.contentType;
+
+      _log.d('BackgroundMessage', 'Decrypted message ${msg.id}: contentType=$contentType, size=${decryptedBin.length}');
+
+      if (contentType == MessageContentType.text) {
+        // Convert binary to text
+        String textContent;
+        if (msg.isCompressed) {
+          textContent = CompressionService().smartDecompress(decryptedBin, true);
+        } else {
+          textContent = utf8.decode(decryptedBin);
+        }
 
         // Save decrypted message locally with key metadata
         await _messageStorage.saveDecryptedMessage(
           conversationId: conversationId,
-          message: DecryptedMessageData(
+          message: LocalMessage(
             id: msg.id,
             senderId: senderId,
             createdAt: createdAt,
-            contentType: msg.contentType,
-            textContent: decrypted,
+            contentType: contentType,
+            textContent: textContent,
             isCompressed: msg.isCompressed,
             keySegmentStart: keySegmentStartByte,
             keySegmentEnd: keySegmentEndByte,
           ),
         );
-        if (isPseudoMessage(decrypted)){
-          _pseudoService.setPseudo(idFromPseudoMessage(decrypted), pseudoFromPseudoMessage(decrypted));
+
+        if (isPseudoMessage(textContent)) {
+          _pseudoService.setPseudo(idFromPseudoMessage(textContent), pseudoFromPseudoMessage(textContent));
         }
       } else {
-        final decryptedBin = crypto.decryptBinary(encryptedMessage: msg, sharedKey: key, markAsUsed: true);
-        // Après déchiffrement, msg.metadata contient les métadonnées déchiffrées
-        final senderId = msg.senderId;
-        final createdAt = msg.createdAt;
-
+        // Image or file - keep as binary
         await _messageStorage.saveDecryptedMessage(
           conversationId: conversationId,
-          message: DecryptedMessageData(
+          message: LocalMessage(
             id: msg.id,
             senderId: senderId,
             createdAt: createdAt,
-            contentType: msg.contentType,
+            contentType: contentType,
             binaryContent: decryptedBin,
             fileName: msg.fileName,
             mimeType: msg.mimeType,
@@ -481,6 +514,7 @@ class MessageService {
           ),
         );
       }
+
       await _keyService.updateUsedBytes(
         conversationId,
         keySegmentStartByte,
@@ -556,14 +590,44 @@ class MessageService {
     }
   }
 
-  /// Marque un message comme lu
+  /// Marque un message comme lu (et tous les précédents par idempotence)
+  /// - Met à jour le statut local du message
+  /// - Envoie un ack R à Firestore en arrière-plan (idempotent)
+  /// - Émet un événement de mise à jour
   Future<void> markMessageAsRead(String conversationId, String messageId) async {
     try {
+      // Récupérer tous les messages locaux pour marquer tous ceux <= messageId comme lus
+      final allMessages = await _messageStorage.getConversationMessages(conversationId);
+      if (allMessages.isEmpty) return;
+
+      allMessages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+      // Trouver l'index du message actuel
+      final currentIndex = allMessages.indexWhere((m) => m.id == messageId);
+      if (currentIndex == -1) return;
+
+      // Marquer tous les messages jusqu'à celui-ci comme lus localement (fast)
       final readIds = await _getReadMessageIds(conversationId);
-      if (!readIds.contains(messageId)) {
-        readIds.add(messageId);
-        await _localStorage.saveReadMessageIds(conversationId, readIds);
-        _log.i('UnreadMsg', 'Marked message $messageId as read');
+      final messagesToMark = <LocalMessage>[];
+
+      for (int i = 0; i <= currentIndex; i++) {
+        final msg = allMessages[i];
+        if (!readIds.contains(msg.id)) {
+          readIds.add(msg.id);
+          messagesToMark.add(msg);
+        }
+      }
+
+      // Sauvegarder les IDs lus localement FIRST (fast)
+      await _localStorage.saveReadMessageIds(conversationId, readIds);
+
+      _log.i('UnreadMsg', 'Marked messages up to $messageId as read locally (${currentIndex + 1} messages)');
+
+      // Mettre à jour Firestore en arrière-plan (non-bloquant)
+      if (messagesToMark.isNotEmpty) {
+        _updateFirestoreReadStatus(conversationId, messagesToMark).catchError((e) {
+          _log.e('UnreadMsg', 'Error updating Firestore read status: $e');
+        });
       }
     } catch (e) {
       _log.e('UnreadMsg', 'Error marking message as read: $e');
@@ -612,21 +676,87 @@ class MessageService {
     }
   }
 
-  /// Marque tous les messages comme lus
+  /// Marque tous les messages comme lus localement et sur Firestore
+  /// Ajoute un ack de lecture pour chaque message et met à jour les statuts locaux
+  /// Cette méthode est non-bloquante pour éviter les problèmes de connexion lente
   Future<void> markAllAsRead(String conversationId) async {
     try {
       // Get all local messages
       final allMessages = await _messageStorage.getConversationMessages(conversationId);
+      if (allMessages.isEmpty) return;
 
-      // Mark all as read
+      // Save all as read locally FIRST (fast operation)
       final allIds = allMessages.map((m) => m.id).toList();
       await _localStorage.saveReadMessageIds(conversationId, allIds);
 
-      _log.i('UnreadMsg', 'Marked all ${allIds.length} messages as read for $conversationId');
+      // Then update Firestore in background (don't block UI)
+      _updateFirestoreReadStatus(conversationId, allMessages).catchError((e) {
+        _log.e('UnreadMsg', 'Error updating Firestore read status: $e');
+      });
+
+      _log.i('UnreadMsg', 'Marked all ${allIds.length} messages as read locally for $conversationId');
     } catch (e) {
       _log.e('UnreadMsg', 'Error marking all as read: $e');
     }
   }
+
+  /// Updates Firestore read status in background (non-blocking)
+  Future<void> _updateFirestoreReadStatus(String conversationId, List<LocalMessage> messages) async {
+    final conversation = await _conversationService.getConversation(conversationId);
+    if (conversation == null) return;
+
+    // Expected ack count = nombre de participants (on compte seulement les acks R)
+    // Si pas encore de participants (conversation vide), on ne peut pas calculer allRead
+    final expectedAckCount = conversation.peerIds.length;
+    if (expectedAckCount == 0) {
+      _log.d('UnreadMsg', 'No participants yet, skipping Firestore read status update');
+      return;
+    }
+
+    // Process each message
+    for (final msg in messages) {
+      // Generate deterministic read ack for this message
+      final readAckId = await _generateDeterministicAckId(msg.id, 'read');
+
+      try {
+        // Add ack to Firestore and get status (idempotent)
+        final cloudStatus = await _conversationService.addReadAckAndGetStatus(
+          conversationId: conversationId,
+          messageId: msg.id,
+          ackId: readAckId,
+          expectedAckCount: expectedAckCount,
+        );
+
+        // Update local message with cloud status
+        final updatedMessage = msg.copyWith(
+          existsInCloud: cloudStatus.exists,
+          hasCloudContent: cloudStatus.hasContent,
+          allRead: cloudStatus.allRead,
+        );
+
+        await _messageStorage.updateMessage(
+          conversationId: conversationId,
+          message: updatedMessage,
+        );
+      } catch (e) {
+        // Message might already be deleted from Firestore or connection issue
+        // Update local status to reflect it's no longer in cloud
+        final updatedMessage = msg.copyWith(
+          existsInCloud: false,
+          hasCloudContent: false,
+          allRead: true,
+        );
+        await _messageStorage.updateMessage(
+          conversationId: conversationId,
+          message: updatedMessage,
+        );
+        _log.d('UnreadMsg', 'Message ${msg.id} not in Firestore: $e');
+      }
+    }
+
+    _log.i('UnreadMsg', 'Updated Firestore read status for ${messages.length} messages');
+  }
+
 
   /// Supprime les données de lecture pour une conversation
   Future<void> deleteUnreadCount(String conversationId) async {
@@ -663,12 +793,12 @@ class MessageService {
   Future<int> getConversationSize(String convId) async =>
       _messageStorage.getConversationSize(convId);
 
-  Stream<List<DecryptedMessageData>> watchConversationMessages(String conversationId) =>
+  Stream<List<LocalMessage>> watchConversationMessages(String conversationId) =>
       _messageStorage.watchConversationMessages(conversationId);
 
   Future<void> deleteConversationMessages(String convId) async =>
       _messageStorage.deleteConversationMessages(convId);
 
-  Future<List<DecryptedMessageData>> getConversationMessages(String id) async =>
+  Future<List<LocalMessage>> getConversationMessages(String id) async =>
       _messageStorage.getConversationMessages(id);
 }

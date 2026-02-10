@@ -323,7 +323,7 @@ class _ConversationTileState extends State<_ConversationTile> {
   final MessageService _messageService = MessageService.fromCurrentUserID();
   String _displayName = '';
   StreamSubscription<String>? _pseudoSubscription;
-  StreamSubscription<List<DecryptedMessageData>>? _messagesSubscription;
+  StreamSubscription<List<LocalMessage>>? _messagesSubscription;
   
   // Real-time message data
   String _lastMessageText = '';
@@ -379,7 +379,7 @@ class _ConversationTileState extends State<_ConversationTile> {
   }
 
   /// Update UI with latest message data
-  void _updateMessageData(List<DecryptedMessageData> messages) async {
+  void _updateMessageData(List<LocalMessage> messages) async {
     if (messages.isEmpty) {
       if (mounted) {
         setState(() {
@@ -392,7 +392,7 @@ class _ConversationTileState extends State<_ConversationTile> {
     }
 
     // Sort by timestamp descending
-    final sortedMessages = List<DecryptedMessageData>.from(messages);
+    final sortedMessages = List<LocalMessage>.from(messages);
     sortedMessages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     
     final lastMessage = sortedMessages.first;

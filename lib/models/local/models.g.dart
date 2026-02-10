@@ -6,9 +6,9 @@ part of 'models.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-DecryptedMessageData _$DecryptedMessageDataFromJson(
+LocalMessage _$DecryptedMessageDataFromJson(
   Map<String, dynamic> json,
-) => DecryptedMessageData(
+) => LocalMessage(
   id: json['id'] as String,
   senderId: json['senderId'] as String,
   createdAt: DateTime.parse(json['createdAt'] as String),
@@ -24,10 +24,13 @@ DecryptedMessageData _$DecryptedMessageDataFromJson(
   isCompressed: json['isCompressed'] as bool? ?? false,
   keySegmentStart: (json['keySegmentStart'] as num?)?.toInt(),
   keySegmentEnd: (json['keySegmentEnd'] as num?)?.toInt(),
+  existsInCloud: json['existsInCloud'] as bool? ?? true,
+  hasCloudContent: json['hasCloudContent'] as bool? ?? true,
+  allRead: json['allRead'] as bool? ?? false,
 );
 
 Map<String, dynamic> _$DecryptedMessageDataToJson(
-  DecryptedMessageData instance,
+  LocalMessage instance,
 ) => <String, dynamic>{
   'id': instance.id,
   'senderId': instance.senderId,
@@ -42,6 +45,9 @@ Map<String, dynamic> _$DecryptedMessageDataToJson(
   'isCompressed': instance.isCompressed,
   'keySegmentStart': instance.keySegmentStart,
   'keySegmentEnd': instance.keySegmentEnd,
+  'existsInCloud': instance.existsInCloud,
+  'hasCloudContent': instance.hasCloudContent,
+  'allRead': instance.allRead,
 };
 
 KeyMetadata _$KeyMetadataFromJson(Map<String, dynamic> json) => KeyMetadata(

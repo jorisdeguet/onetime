@@ -269,10 +269,12 @@ class FirestoreService {
   }
 
   /// Marks a message as read (via anonymous ack) and checks if we can delete it
-  /// Note: For real deletion, we need to wait for enough read acks
+  /// Adds the ackId to ackSet and deletes the message if all participants have read
+  /// expectedAckCount should be peerIds.length (we count only R-prefixed read acks)
   Future<void> markMessageAsReadAndCleanup({
     required String conversationId,
     required String messageId,
+    required String ackId,
     required int expectedAckCount,
   }) async {
     final docRef = _messagesRef(conversationId).doc(messageId);
@@ -284,13 +286,76 @@ class FirestoreService {
       final data = doc.data()!;
       final ackSet = Set<String>.from(data['ackSet'] as List? ?? []);
 
-      // Check if we have enough acks to consider all have read
-      final allRead = ackSet.length >= expectedAckCount;
+      // Add the read ack
+      if (!ackSet.contains(ackId)) {
+        ackSet.add(ackId);
+      }
+      // go through ackSet filtering that starts with R and count
+      final numberRead = ackSet.where((ack) => ack.startsWith('R')).length;
+      final allRead = numberRead >= expectedAckCount;
 
       if (allRead) {
-        // Delete message completely
+        // Delete message completely from Firestore
         transaction.delete(docRef);
-        _log.d('Conversation', 'Message $messageId deleted (all acks received)');
+        _log.d('Conversation', 'Message $messageId deleted (all acks received: ${ackSet.length}/$expectedAckCount)');
+      } else {
+        // Update ackSet
+        transaction.update(docRef, {
+          'ackSet': ackSet.toList(),
+        });
+        _log.d('Conversation', 'Message $messageId ack added (${ackSet.length}/$expectedAckCount)');
+      }
+    });
+  }
+
+  /// Adds a read ack and returns the current cloud status of the message
+  /// This is used by MessageService to update local message status
+  Future<CloudMessageStatus> addReadAckAndGetStatus({
+    required String conversationId,
+    required String messageId,
+    required String ackId,
+    required int expectedAckCount,
+  }) async {
+    final docRef = _messagesRef(conversationId).doc(messageId);
+
+    return await _firestore.runTransaction<CloudMessageStatus>((transaction) async {
+      final doc = await transaction.get(docRef);
+
+      if (!doc.exists) {
+        // Message already deleted from Firestore
+        return CloudMessageStatus(exists: false, hasContent: false, allRead: true);
+      }
+
+      final data = doc.data()!;
+      final ackSet = Set<String>.from(data['ackSet'] as List? ?? []);
+
+      // Add the read ack if not already present (idempotent)
+      if (!ackSet.contains(ackId)) {
+        ackSet.add(ackId);
+      }
+
+      // Count R acks to check if all have read
+      final numberRead = ackSet.where((ack) => ack.startsWith('R')).length;
+      final allRead = numberRead >= expectedAckCount;
+
+      // Check if ciphertext has content
+      final ciphertextRaw = data['ciphertext'];
+      final hasContent = ciphertextRaw != null &&
+          ((ciphertextRaw is Blob && ciphertextRaw.bytes.isNotEmpty) ||
+           (ciphertextRaw is String && ciphertextRaw.isNotEmpty));
+
+      if (allRead) {
+        // Delete message completely from Firestore
+        transaction.delete(docRef);
+        _log.d('Conversation', 'Message $messageId deleted (all read: $numberRead/$expectedAckCount)');
+        return CloudMessageStatus(exists: false, hasContent: false, allRead: true);
+      } else {
+        // Update ackSet
+        transaction.update(docRef, {
+          'ackSet': ackSet.toList(),
+        });
+        _log.d('Conversation', 'Message $messageId ack added (read: $numberRead/$expectedAckCount)');
+        return CloudMessageStatus(exists: true, hasContent: hasContent, allRead: false);
       }
     });
   }
@@ -306,3 +371,20 @@ class FirestoreService {
     return 'conv_${DateTime.now().millisecondsSinceEpoch}_$localUserId';
   }
 }
+
+/// Status of a message in the cloud (Firestore)
+class CloudMessageStatus {
+  /// True if the message document exists in Firestore
+  final bool exists;
+  /// True if the ciphertext field has content (not empty)
+  final bool hasContent;
+  /// True if all participants have sent their read ack (R)
+  final bool allRead;
+
+  CloudMessageStatus({
+    required this.exists,
+    required this.hasContent,
+    required this.allRead,
+  });
+}
+

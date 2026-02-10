@@ -140,17 +140,26 @@ class SharedKey {
   }
 
   /// Extracts contiguous bytes from local key.
-  /// [startByte] is byte index relative to keyData (0-based)
+  /// [startByte] is an absolute byte index (from key inception)
+  /// [lengthBytes] is the number of bytes to extract
   Uint8List extractKeyBytes(int startByte, int lengthBytes) {
     if (startByte < 0 || lengthBytes <= 0) throw RangeError('Invalid byte range');
     if (startByte < _nextAvailableByte) {
-      throw StateError('Cannot extract bytes from truncated part of key');
+      throw StateError('Cannot extract bytes from truncated part of key (startByte=$startByte < nextAvailableByte=$_nextAvailableByte)');
     }
+
     final endByte = startByte + lengthBytes;
-    if (endByte > keyData.length) {
-      throw RangeError('Requested bytes exceed key length');
+    final keyEndByte = _nextAvailableByte + keyData.length; // Absolute end of key
+
+    if (endByte > keyEndByte) {
+      throw RangeError('Requested bytes exceed key length (endByte=$endByte > keyEndByte=$keyEndByte)');
     }
-    return Uint8List.fromList(keyData.sublist(startByte, endByte));
+
+    // Convert absolute indices to relative indices within keyData
+    final relativeStart = startByte - _nextAvailableByte;
+    final relativeEnd = endByte - _nextAvailableByte;
+
+    return Uint8List.fromList(keyData.sublist(relativeStart, relativeEnd));
   }
 
   int countAvailableBytes() => keyData.length;

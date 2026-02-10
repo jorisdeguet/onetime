@@ -5,7 +5,7 @@ import 'package:onetime/services/local_storage_service.dart';
 import 'package:onetime/models/local/models.dart';
 
 // Re-export DecryptedMessageData from models.dart for backwards compatibility
-export 'package:onetime/models/local/models.dart' show DecryptedMessageData;
+export 'package:onetime/models/local/models.dart' show LocalMessage;
 
 /// Service to locally store decrypted messages.
 ///
@@ -22,13 +22,13 @@ class MessageStorage {
   final _storage = LocalStorageService();
 
   // Stream controllers per conversation to notify UI
-  final Map<String, StreamController<List<DecryptedMessageData>>> _controllers = {};
+  final Map<String, StreamController<List<LocalMessage>>> _controllers = {};
 
-  Stream<List<DecryptedMessageData>> watchConversationMessages(String conversationId) {
+  Stream<List<LocalMessage>> watchConversationMessages(String conversationId) {
     // Ensure internal controller exists (used to broadcast updates)
     if (!_controllers.containsKey(conversationId)) {
       _log.d('MessageStorage', 'Creating stream controller for conversation $conversationId');
-      _controllers[conversationId] = StreamController<List<DecryptedMessageData>>.broadcast();
+      _controllers[conversationId] = StreamController<List<LocalMessage>>.broadcast();
     }
     _log.d('MessageStorage', 'watchConversationMessages subscribed (wrapper) for $conversationId');
     return Stream.multi((subscriber) async {
@@ -73,7 +73,7 @@ class MessageStorage {
   /// Saves a decrypted message locally
   Future<void> saveDecryptedMessage({
     required String conversationId,
-    required DecryptedMessageData message,
+    required LocalMessage message,
   }) async {
     _log.i('MessageStorage', 'Saving decrypted message ${message.id}');
 
@@ -98,15 +98,35 @@ class MessageStorage {
     }
   }
 
+  /// Updates an existing message (e.g., cloud status)
+  Future<void> updateMessage({
+    required String conversationId,
+    required LocalMessage message,
+  }) async {
+    _log.d('MessageStorage', 'Updating message ${message.id}');
+
+    try {
+      await _storage.saveMessage(conversationId, message.id, message.toJson());
+
+      // Notify listeners
+      await _emitConversationMessages(conversationId);
+
+      _log.d('MessageStorage', 'Message ${message.id} updated successfully');
+    } catch (e) {
+      _log.e('MessageStorage', 'Error updating message: $e');
+      rethrow;
+    }
+  }
+
   /// Gets a decrypted message
-  Future<DecryptedMessageData?> getDecryptedMessage({
+  Future<LocalMessage?> getDecryptedMessage({
     required String conversationId,
     required String messageId,
   }) async {
     try {
       final json = await _storage.readMessage(conversationId, messageId);
       if (json == null) return null;
-      return DecryptedMessageData.fromJson(json);
+      return LocalMessage.fromJson(json);
     } catch (e) {
       _log.e('MessageStorage', 'Error getting message: $e');
       return null;
@@ -114,10 +134,10 @@ class MessageStorage {
   }
 
   /// Gets all decrypted messages for a conversation
-  Future<List<DecryptedMessageData>> getConversationMessages(String conversationId) async {
+  Future<List<LocalMessage>> getConversationMessages(String conversationId) async {
     try {
       final messageIds = await _storage.listMessageIds(conversationId);
-      final messages = <DecryptedMessageData>[];
+      final messages = <LocalMessage>[];
 
       for (final messageId in messageIds) {
         final message = await getDecryptedMessage(
