@@ -107,17 +107,6 @@ class PseudoService {
     _log.i('PseudoService', 'Pseudo set for $userID: $pseudo');
   }
 
-  /// Sets multiple pseudos at once
-  Future<void> setPseudos(Map<String, String> pseudos) async {
-    await _loadFromFile();
-    final updatedPseudos = Map<String, String>.from(_cache!.pseudos);
-    updatedPseudos.addAll(pseudos);
-    _cache = _cache!.copyWith(pseudos: updatedPseudos);
-    await _saveToFile();
-    _log.i('PseudoService', 'Pseudos set: ${pseudos.keys.join(", ")}');
-    _pseudoUpdateController.add("update");
-  }
-
   /// Removes a user's pseudo
   Future<void> removePseudo(String oderId) async {
     await _loadFromFile();
@@ -125,20 +114,6 @@ class PseudoService {
     updatedPseudos.remove(oderId);
     _cache = _cache!.copyWith(pseudos: updatedPseudos);
     await _saveToFile();
-  }
-
-  /// Returns a display name for a user ID
-  /// If a pseudo is known, returns it, otherwise returns a short version of the ID
-  Future<String> getDisplayName(String userId) async {
-    final pseudo = await getPseudo(userId);
-    if (pseudo != null && pseudo.isNotEmpty) {
-      return pseudo;
-    }
-    // Return last digits of ID
-    if (userId.length > 4) {
-      return '...${userId.substring(userId.length - 4)}';
-    }
-    return userId;
   }
 
   Future<Map<String, String>> getPseudos(List<String> oderIds) async {
