@@ -146,28 +146,6 @@ class KeyService {
     session.markSegmentAsRead(segment.segmentIndex);
   }
 
-  /// Génère la confirmation d'un segment lu.
-  /// Contient SEULEMENT l'index, jamais les octets de clé.
-  KeySegmentConfirmation createReadConfirmation(
-      KexSessionReader session,
-      int segmentIndex,
-      ) {
-    return KeySegmentConfirmation(
-      sessionId: session.sessionId,
-      peerId: session.localPeerId,
-      segmentIndex: segmentIndex,
-      timestamp: DateTime.now(),
-    );
-  }
-
-  /// Enregistre une confirmation reçue d'un lecteur (côté source).
-  void recordConfirmation(
-      KexSessionSource session,
-      KeySegmentConfirmation confirmation,
-      ) {
-    session.markPeerHasSegment(confirmation.peerId, confirmation.segmentIndex);
-  }
-
   /// Vérifie si tous les peers ont lu tous les segments.
   bool isExchangeComplete(KexSessionSource session) {
     return session.isComplete;
@@ -389,41 +367,6 @@ class KeySegmentQrData {
 
   /// Taille estimée en caractères pour le QR
   int get estimatedQrSize => toQrString().length;
-}
-
-/// Confirmation de lecture d'un segment (envoyée sur le réseau)
-class KeySegmentConfirmation {
-  final String sessionId;
-  final String peerId;
-  final int segmentIndex;
-  final DateTime timestamp;
-
-  KeySegmentConfirmation({
-    required this.sessionId,
-    required this.peerId,
-    required this.segmentIndex,
-    required this.timestamp,
-  }) {
-  }
-
-  /// Sérialise pour envoi réseau (NE CONTIENT PAS les octets de clé)
-  Map<String, dynamic> toJson() {
-    return {
-      'sessionId': sessionId,
-      'peerId': peerId,
-      'segmentIndex': segmentIndex,
-      'timestamp': timestamp.toIso8601String(),
-    };
-  }
-
-  factory KeySegmentConfirmation.fromJson(Map<String, dynamic> json) {
-    return KeySegmentConfirmation(
-      sessionId: json['sessionId'] as String,
-      peerId: json['peerId'] as String,
-      segmentIndex: json['segmentIndex'] as int,
-      timestamp: DateTime.parse(json['timestamp'] as String),
-    );
-  }
 }
 
 /// Session d'extension de clé existante
