@@ -1,6 +1,6 @@
 import 'package:json_annotation/json_annotation.dart';
 
-part 'models.g.dart';
+part 'local_keymetadata.g.dart';
 
 
 /// Key metadata stored locally

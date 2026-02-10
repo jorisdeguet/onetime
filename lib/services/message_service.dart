@@ -154,34 +154,30 @@ class MessageService {
       message: localData,
     );
 
-    //Mettre à jour les octets utilisés dans le stockage local
+    // consume local key
     await _keyService.updateUsedBytes(
       conversationId,
       usedSegment.startIndex,
       usedSegment.endIndex,
     );
 
-    // Générer un ack anonyme pour le transfert (T)
+    // user has the message and assumes read
     final transferAckId = _generateAckId('T');
     message.addAck(transferAckId);
-
-    // Générer un ack de lecture (R) - l'expéditeur a déjà "lu" son propre message
     final readAckId = _generateAckId('R');
     message.addAck(readAckId);
-
-    // Mettre à jour le message local avec nos ackIds
     final updatedLocalData = localData.copyWith(
       myTransferAckId: transferAckId,
       myReadAckId: readAckId,
     );
 
-    // Sauvegarder le message local avec les ackIds
+    // save messages and acks
     await _messageStorage.updateMessage(
       conversationId: conversationId,
       message: updatedLocalData,
     );
 
-    // Envoyer sur Firestore (senderId est dans les métadonnées chiffrées)
+    // sending the wrapper in firestore
     _log.d('MessageService', 'Calling conversationService.sendMessage...');
     await _conversationService.sendMessage(
       conversationId: conversationId,
@@ -190,7 +186,9 @@ class MessageService {
 
     _log.i('MessageService', 'Message sent successfully!');
     await updateKeyDebugInfo(conversationId);
-  }  /// Generates an anonymous ack ID with minimal identifying information
+  }
+
+  /// Generates an anonymous ack ID with minimal identifying information
   /// [prefix] is 'T' for transfer or 'R' for read
   /// Uses secure random + timestamp, then hashes to remove any pattern
   String _generateAckId(String prefix) {
