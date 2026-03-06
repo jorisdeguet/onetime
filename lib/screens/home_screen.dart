@@ -16,6 +16,7 @@ import '../services/firestore_service.dart';
 import '../services/auth_service.dart';
 import '../services/pseudo_service.dart';
 import 'profile_screen.dart';
+import '../widgets/nav_drawer.dart';
 
 /// Home screen after login.
 class HomeScreen extends StatefulWidget {
@@ -112,6 +113,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
+      drawer: const NavDrawer(),
       body: ConversationsListScreen(key: _conversationsKey, userId: _authService.currentUserId ?? ''),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _createNewConversation(context),
@@ -182,8 +184,11 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
     _conversationService = FirestoreService(localUserId: widget.userId);
     _conversationsStream = _conversationService.watchUserConversations().asyncMap((conversations) async {
       final messageStorage = MessageStorage();
-      
-      final withTimes = await Future.wait(conversations.map((c) async {
+
+      // Exclude conversations still in "joining" state
+      final activeConversations = conversations.where((c) => !c.isJoining).toList();
+
+      final withTimes = await Future.wait(activeConversations.map((c) async {
         final lastTime = await messageStorage.getLastMessageTimestamp(c.id);
         return MapEntry(c, lastTime ?? c.createdAt);
       }));
