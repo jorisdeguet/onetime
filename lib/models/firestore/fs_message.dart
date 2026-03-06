@@ -193,9 +193,9 @@ class EncryptedMessage {
     final ciphertextRaw = data['ciphertext'];
     if (ciphertextRaw is Blob) {
       ciphertextBytes = ciphertextRaw.bytes;
-    } else if (ciphertextRaw is List<int>) {
+    } else if (ciphertextRaw is List) {
       // Firestore returns Blob as List<int>
-      ciphertextBytes = Uint8List.fromList(ciphertextRaw);
+      ciphertextBytes = Uint8List.fromList(ciphertextRaw as List<int>);
     } else {
       throw FormatException('Invalid ciphertext format: ${ciphertextRaw.runtimeType}');
     }
