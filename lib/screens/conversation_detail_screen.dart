@@ -18,6 +18,7 @@ import 'package:onetime/services/pseudo_service.dart';
 import '../services/app_logger.dart';
 import '../models/firestore/fs_conversation.dart';
 import 'media_send_screen.dart';
+import 'message_search_screen.dart';
 
 /// Wrapper pour afficher un message local déchiffré
 class _DisplayMessage {
@@ -552,6 +553,16 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
               },
             ),
 
+          IconButton(
+            icon: const Icon(Icons.search),
+            tooltip: 'Rechercher des messages',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => MessageSearchScreen(conversation: widget.conversation),
+              ),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.key),
             tooltip: 'Créer / étendre une clé',
