@@ -8,6 +8,7 @@ import 'key_exchange_screen.dart';
 import '../services/app_logger.dart';
 import '../services/firestore_service.dart';
 import '../services/auth_service.dart';
+import '../widgets/nav_drawer.dart';
 
 /// Screen for creating a new conversation.
 /// 1. Creates a conversation in Firestore
@@ -36,6 +37,7 @@ class _NewConversationScreenState extends State<NewConversationScreen> {
     super.initState();
     _createConversation();
   }
+
 
   String get _currentUserId => _authService.currentUserId ?? '';
 
@@ -158,6 +160,7 @@ class _NewConversationScreenState extends State<NewConversationScreen> {
       appBar: AppBar(
         title: const Text('Nouvelle conversation'),
       ),
+      drawer: const NavDrawer(),
       body: _isCreating
           ? const Center(child: CircularProgressIndicator())
           : _buildQrCodeView(),

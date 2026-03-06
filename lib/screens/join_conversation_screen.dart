@@ -5,6 +5,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'key_exchange_screen.dart';
 import '../services/app_logger.dart';
 import '../services/auth_service.dart';
+import '../widgets/nav_drawer.dart';
 
 /// Screen to join an existing conversation via QR code.
 /// The participant scans the QR code displayed by the creator.
@@ -128,6 +129,7 @@ class _JoinConversationScreenState extends State<JoinConversationScreen> {
       appBar: AppBar(
         title: Text(_scannedConversationId == null ? 'Rejoindre' : 'En attente'),
       ),
+      drawer: const NavDrawer(),
       body: _scannedConversationId == null
           ? _buildScannerView()
           : _buildWaitingView(),

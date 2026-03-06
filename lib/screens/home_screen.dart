@@ -17,6 +17,7 @@ import '../services/firestore_service.dart';
 import '../services/auth_service.dart';
 import '../services/pseudo_service.dart';
 import 'profile_screen.dart';
+import '../widgets/nav_drawer.dart';
 
 /// Home screen after login.
 class HomeScreen extends StatefulWidget {
@@ -108,23 +109,10 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.refresh),
             tooltip: 'Rafraîchir',
           ),
-          // Icône de profil
-          IconButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => ProfileScreen(onThemeModeChanged: widget.onThemeModeChanged)),
-            ),
-            icon: const Icon(Icons.account_circle_outlined),
-            tooltip: 'Profil',
-          ),
         ],
       ),
+      drawer: const NavDrawer(),
       body: ConversationsListScreen(key: _conversationsKey, userId: _authService.currentUserId ?? ''),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _createNewConversation(context),
-        tooltip: 'Créer une conversation',
-        child: const Icon(Icons.add),
-      ),
     );
   }
 
