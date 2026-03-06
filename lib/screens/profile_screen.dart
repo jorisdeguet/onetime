@@ -6,6 +6,7 @@ import 'package:onetime/services/app_logger.dart';
 import 'package:onetime/services/format_service.dart';
 import 'package:onetime/services/auth_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../widgets/nav_drawer.dart';
 
 /// Profile screen with settings
 class ProfileScreen extends StatefulWidget {
@@ -216,6 +217,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       appBar: AppBar(
         title: Text(l10n.get('profile_title')),
       ),
+      drawer: const NavDrawer(),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : userId == null

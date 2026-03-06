@@ -18,6 +18,7 @@ import 'package:onetime/services/pseudo_service.dart';
 import '../services/app_logger.dart';
 import '../models/firestore/fs_conversation.dart';
 import 'media_send_screen.dart';
+import '../widgets/nav_drawer.dart';
 
 /// Wrapper pour afficher un message local déchiffré
 class _DisplayMessage {
@@ -123,6 +124,7 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
     _messageService.markAllAsRead(widget.conversation.id);
     _scrollController.addListener(_onScroll);
   }
+
 
   void _onScroll() {
     if (_scrollController.hasClients) {
@@ -563,10 +565,12 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
           ),
         ],
       ),
+      drawer: const NavDrawer(),
       body: Stack(
         children: [
           Column(
             children: [
+              // ...existing code...
               // Liste des messages
               Expanded(
                 child: StreamBuilder<List<_DisplayMessage>>(
