@@ -189,16 +189,15 @@ class EncryptedMessage {
       throw FormatException('No keySegment information available');
     }
 
-    // Read ciphertext - supports Blob (new) and base64 String (legacy)
     Uint8List ciphertextBytes;
     final ciphertextRaw = data['ciphertext'];
     if (ciphertextRaw is Blob) {
       ciphertextBytes = ciphertextRaw.bytes;
-    } else if (ciphertextRaw is String) {
-      // Legacy: base64 encoded string
-      ciphertextBytes = base64Decode(ciphertextRaw);
+    } else if (ciphertextRaw is List<int>) {
+      // Firestore returns Blob as List<int>
+      ciphertextBytes = Uint8List.fromList(ciphertextRaw);
     } else {
-      throw FormatException('Invalid ciphertext format');
+      throw FormatException('Invalid ciphertext format: ${ciphertextRaw.runtimeType}');
     }
 
     return EncryptedMessage(
