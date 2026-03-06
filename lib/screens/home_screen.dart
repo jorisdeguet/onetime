@@ -10,6 +10,7 @@ import '../models/firestore/fs_conversation.dart';
 import 'conversation_detail_screen.dart';
 import '../services/message_service.dart';
 import 'join_conversation_screen.dart';
+import 'message_search_screen.dart';
 import 'new_conversation_screen.dart';
 import '../services/key_exchange_sync_service.dart';
 import '../services/firestore_service.dart';
@@ -90,6 +91,18 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         actions: [
+          // Bouton de recherche de messages
+          IconButton(
+            onPressed: () => _searchMessages(context),
+            icon: const Icon(Icons.search),
+            tooltip: 'Rechercher des messages',
+          ),
+          // Bouton pour rejoindre une conversation (scanner QR)
+          IconButton(
+            onPressed: () => _joinConversation(context),
+            icon: const Icon(Icons.qr_code_scanner),
+            tooltip: 'Rejoindre une conversation',
+          ),
           // Bouton de rafraîchissement
           IconButton(
             onPressed: () => _conversationsKey.currentState?.refresh(),
@@ -100,6 +113,13 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       drawer: const NavDrawer(),
       body: ConversationsListScreen(key: _conversationsKey, userId: _authService.currentUserId ?? ''),
+    );
+  }
+
+  void _searchMessages(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const MessageSearchScreen()),
     );
   }
 
