@@ -577,7 +577,6 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
           ),
         ],
       ),
-      drawer: const NavDrawer(),
       body: Stack(
         children: [
           Column(

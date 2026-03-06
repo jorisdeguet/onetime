@@ -16,7 +16,6 @@ import '../services/key_exchange_sync_service.dart';
 import '../services/firestore_service.dart';
 import '../services/auth_service.dart';
 import '../services/pseudo_service.dart';
-import 'profile_screen.dart';
 import '../widgets/nav_drawer.dart';
 
 /// Home screen after login.
@@ -112,7 +111,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      drawer: const NavDrawer(),
       body: ConversationsListScreen(key: _conversationsKey, userId: _authService.currentUserId ?? ''),
     );
   }
