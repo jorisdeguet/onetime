@@ -505,6 +505,7 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
 
   Widget _buildConversationScreen(BuildContext context, Conversation conversation) {
     return Scaffold(
+      drawer: const NavDrawer(),
       appBar: AppBar(
         title: GestureDetector(
           onTap: () => _showConversationInfo(context),
@@ -576,7 +577,6 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
           ),
         ],
       ),
-      drawer: const NavDrawer(),
       body: Stack(
         children: [
           Column(

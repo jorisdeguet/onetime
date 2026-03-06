@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
-import '../services/pseudo_service.dart';
-import '../screens/home_screen.dart';
-import '../screens/new_conversation_screen.dart';
-import '../screens/join_conversation_screen.dart';
-import '../screens/profile_screen.dart';
 
-/// Reusable navigation drawer for all screens except pseudo setting screen
-/// Provides navigation to conversations, create conversation, join conversation, and profile
+import '../screens/dev_screen.dart';
+import '../screens/home_screen.dart';
+import '../screens/join_conversation_screen.dart';
+import '../screens/new_conversation_screen.dart';
+import '../screens/profile_screen.dart';
+import '../services/pseudo_service.dart';
+
+/// Application navigation drawer.
+///
+/// Self-contained StatefulWidget: loads the user pseudo internally and
+/// handles all navigation without requiring parameters from the parent widget.
 class NavDrawer extends StatefulWidget {
   const NavDrawer({super.key});
 
@@ -35,13 +39,13 @@ class _NavDrawerState extends State<NavDrawer> {
 
   void _navigateToHome() {
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => HomeScreen()),
+      MaterialPageRoute(builder: (_) => const HomeScreen()),
       (route) => false,
     );
   }
 
   void _navigateToCreateConversation() {
-    Navigator.pop(context); // Close drawer
+    Navigator.pop(context);
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const NewConversationScreen()),
@@ -49,7 +53,7 @@ class _NavDrawerState extends State<NavDrawer> {
   }
 
   void _navigateToJoinConversation() {
-    Navigator.pop(context); // Close drawer
+    Navigator.pop(context);
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const JoinConversationScreen()),
@@ -57,10 +61,18 @@ class _NavDrawerState extends State<NavDrawer> {
   }
 
   void _navigateToProfile() {
-    Navigator.pop(context); // Close drawer
+    Navigator.pop(context);
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => ProfileScreen(onThemeModeChanged: null)),
+    );
+  }
+
+  void _navigateToDev() {
+    Navigator.pop(context);
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const DevScreen()),
     );
   }
 
@@ -70,7 +82,6 @@ class _NavDrawerState extends State<NavDrawer> {
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
-          // Drawer Header
           DrawerHeader(
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.primary,
@@ -100,39 +111,35 @@ class _NavDrawerState extends State<NavDrawer> {
               ],
             ),
           ),
-
-          // Home / Conversations
           ListTile(
             leading: const Icon(Icons.home),
             title: const Text('Conversations'),
             onTap: _navigateToHome,
           ),
-
-          // Create Conversation
           ListTile(
             leading: const Icon(Icons.add_circle_outline),
             title: const Text('Create Conversation'),
             onTap: _navigateToCreateConversation,
           ),
-
-          // Join Conversation
           ListTile(
             leading: const Icon(Icons.qr_code_2),
             title: const Text('Join Conversation'),
             onTap: _navigateToJoinConversation,
           ),
-
           const Divider(),
-
-          // Profile
           ListTile(
             leading: const Icon(Icons.account_circle),
             title: const Text('Profile'),
             onTap: _navigateToProfile,
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.developer_mode),
+            title: const Text('Dev'),
+            onTap: _navigateToDev,
           ),
         ],
       ),
     );
   }
 }
-
