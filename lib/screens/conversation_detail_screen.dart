@@ -18,6 +18,7 @@ import 'package:onetime/services/pseudo_service.dart';
 import '../services/app_logger.dart';
 import '../models/firestore/fs_conversation.dart';
 import 'media_send_screen.dart';
+import '../widgets/nav_drawer.dart';
 
 /// Wrapper pour afficher un message local déchiffré
 class _DisplayMessage {
@@ -502,6 +503,7 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
 
   Widget _buildConversationScreen(BuildContext context, Conversation conversation) {
     return Scaffold(
+      drawer: const NavDrawer(),
       appBar: AppBar(
         title: GestureDetector(
           onTap: () => _showConversationInfo(context),
