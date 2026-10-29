@@ -109,7 +109,12 @@ class LockService {
           return newLock;
         }
       });
-    } catch (e) {
+    } on FirebaseException catch (e) {
+      // The rules judge expiry on server time: a refusal means the lock is still held.
+      if (e.code == 'permission-denied') {
+        _log.d('LockService', 'Lock refused by server (still held)');
+        return null;
+      }
       _log.e('LockService', 'Error in transaction: $e');
       rethrow;
     }

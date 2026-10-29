@@ -2,49 +2,149 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    match /kex/{sessionId} {
-      // I create session juste for me and friends
-      allow create: if request.auth != null ;
-
-      // only us modify
-      allow update: if request.auth != null ;
-
-      // cleanup request and deletion by the community
-      allow get, read, list, delete: if request.auth != null;
+    function signedIn() {
+      return request.auth != null;
     }
 
-    // Conversations Rules
-    match /conversations/{conversationId} {
-      // 1. Allow creating if user is in the data
-      allow create: if request.auth != null;
+    function uid() {
+      return request.auth.uid;
+    }
 
-      // 2. Allow fetching a SINGLE document if user is a peer OR state is joining
-      allow get, update: if request.auth != null ;
+    // Only these fields of a document change in this write.
+    function onlyChanges(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+    }
 
-      // 3. Allow LISTING (queries) ONLY if the user is a peer
-      // This matches your .where('peerIds', arrayContains: localUserId) query exactly
-      allow list: if request.auth != null;
+    function conversation(conversationId) {
+      return get(/databases/$(database)/documents/conversations/$(conversationId)).data;
+    }
 
-      allow update, delete: if request.auth != null &&
-                            request.auth.uid in resource.data.peerIds;
-      // Messages Subcollection Rules
-      match /messages/{messageId} {
-        // Allow access only if the user is a peer of the parent conversation
-        // Note: checking parent document requires a get() which costs 1 read
-        allow read, write: if request.auth != null;
+    function isPeer(conversationId) {
+      return signedIn() && uid() in conversation(conversationId).peerIds;
+    }
+
+    // ==================== KEY EXCHANGE SESSIONS ====================
+    // Only metadata lives here (who scanned which segment); key bytes travel by QR code only.
+    match /kex/{sessionId} {
+      function isParticipant() {
+        return signedIn() && uid() in resource.data.participants;
       }
 
-      // Locks Subcollection Rules
+      allow create: if signedIn()
+                    && request.resource.data.sourceId == uid()
+                    && uid() in request.resource.data.participants;
+
+      allow get, list, delete: if isParticipant();
+
+      // The source drives the session: segment count, status (a reader finalizes its key
+      // when it sees "completed"), conversation link. Its identity cannot change.
+      allow update: if isParticipant() && resource.data.sourceId == uid()
+                    && request.resource.data.sourceId == resource.data.sourceId;
+
+      // A reader only reports its own scans.
+      allow update: if isParticipant() && resource.data.sourceId != uid()
+                    && onlyChanges(['segmentsByPeer', 'participants', 'updatedAt', 'startIndex', 'endIndex'])
+                    && request.resource.data.participants.toSet() == resource.data.participants.toSet()
+                    && request.resource.data.startIndex == resource.data.startIndex
+                    && request.resource.data.endIndex == resource.data.endIndex
+                    && request.resource.data.segmentsByPeer.diff(resource.data.segmentsByPeer)
+                         .affectedKeys().hasOnly([uid()]);
+    }
+
+    // ==================== CONVERSATIONS ====================
+    match /conversations/{conversationId} {
+      function isMember() {
+        return signedIn() && uid() in resource.data.peerIds;
+      }
+
+      function ownKeyDebugInfoOnly() {
+        return request.resource.data.get('keyDebugInfo', {})
+                 .diff(resource.data.get('keyDebugInfo', {}))
+                 .affectedKeys().hasOnly([uid()]);
+      }
+
+      // Someone who scanned the invitation QR code adds themself, and nothing else.
+      function isJoining() {
+        return signedIn()
+            && !(uid() in resource.data.peerIds)
+            && resource.data.state == 'joining'
+            && onlyChanges(['peerIds'])
+            && request.resource.data.peerIds.toSet() == resource.data.peerIds.toSet().union([uid()].toSet());
+      }
+
+      allow create: if signedIn()
+                    && uid() in request.resource.data.peerIds
+                    && request.resource.data.id == conversationId;
+
+      // Non-members may read a conversation only while it accepts new participants
+      // (or learn that it does not exist).
+      allow get: if signedIn() && (resource == null || isMember() || resource.data.state == 'joining');
+
+      // Queries must filter on peerIds array-contains the caller.
+      allow list: if isMember();
+
+      allow update: if (isMember()
+                        && onlyChanges(['state', 'totalKeyBytes', 'keyDebugInfo', 'peerIds'])
+                        && ownKeyDebugInfoOnly())
+                    || isJoining();
+
+      allow delete: if isMember();
+
+      // ==================== MESSAGES ====================
+      // Document id is "<startByte>-<endByte>": the key range used by the one-time pad.
+      match /messages/{messageId} {
+        function lockHolder() {
+          return get(/databases/$(database)/documents/conversations/$(conversationId)/locks/conversation_lock)
+                   .data.lockerId;
+        }
+
+        function keyRangeLength() {
+          return int(messageId.split('-')[1]) - int(messageId.split('-')[0]);
+        }
+
+        allow read: if isPeer(conversationId);
+
+        // Sending requires holding the conversation lock, so two peers can never encrypt
+        // with the same key bytes. A create on an existing id is an update and is refused,
+        // so a key range can only ever carry one ciphertext.
+        allow create: if isPeer(conversationId)
+                      && lockHolder() == uid()
+                      && messageId.matches('^[0-9]+-[0-9]+$')
+                      && request.resource.data.keys().hasOnly(['ciphertext', 'ackSet', 'serverTimestamp'])
+                      && request.resource.data.ciphertext is bytes
+                      && request.resource.data.ciphertext.size() == keyRangeLength()
+                      && request.resource.data.serverTimestamp == request.time;
+
+        // Acknowledgements only grow; the ciphertext can only be cleared once everyone has it.
+        allow update: if isPeer(conversationId)
+                      && onlyChanges(['ackSet', 'ciphertext'])
+                      && request.resource.data.ackSet.hasAll(resource.data.ackSet)
+                      && (request.resource.data.ciphertext == resource.data.ciphertext
+                          || request.resource.data.ciphertext == '');
+
+        allow delete: if isPeer(conversationId);
+      }
+
+      // ==================== SEND LOCK ====================
+      // Serializes senders. Expiry is judged on server time (request.time),
+      // so a phone with a wrong clock cannot steal a live lock.
       match /locks/{lockId} {
-        // Allow creating/updating locks if user is authenticated
-        // Locks are used to prevent concurrent message sending
-        allow create, update: if request.auth != null;
+        function expired() {
+          return resource.data.createdAt < request.time - duration.value(5, 'm');
+        }
 
-        // Allow reading locks to check availability
-        allow read: if request.auth != null;
+        function validNewLock() {
+          return request.resource.data.keys().hasOnly(['lockerId', 'createdAt'])
+              && request.resource.data.lockerId == uid()
+              && request.resource.data.createdAt == request.time;
+        }
 
-        // Allow deleting own locks or expired locks (> 5 min)
-        allow delete: if request.auth != null;
+        allow read: if isPeer(conversationId);
+        allow create: if isPeer(conversationId) && validNewLock();
+        allow update: if isPeer(conversationId) && validNewLock()
+                      && (resource.data.lockerId == uid() || expired());
+        allow delete: if isPeer(conversationId)
+                      && (resource.data.lockerId == uid() || expired());
       }
     }
   }

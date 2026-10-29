@@ -56,10 +56,8 @@ class _JoinConversationScreenState extends State<JoinConversationScreen> {
 
       // Ajouter cet utilisateur à la conversation
       if (!peerIds.contains(_currentUserId)) {
-        peerIds.add(_currentUserId);
-
         await _firestore.collection('conversations').doc(conversationId).update({
-          'peerIds': peerIds,
+          'peerIds': FieldValue.arrayUnion([_currentUserId]),
         });
       }
 

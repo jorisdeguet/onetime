@@ -27,6 +27,11 @@ class FsKex {
 
   /// Status de la session
   KeyExchangeStatus status;
+
+  /// Segment count written by the source when it ends the exchange early
+  /// (only the prefix every reader scanned). Null until then.
+  final int? announcedSegments;
+
   final DateTime createdAt;
   DateTime updatedAt;
 
@@ -42,6 +47,7 @@ class FsKex {
     required this.sourceId,
     required this.segmentsByPeer,
     this.status = KeyExchangeStatus.inProgress,
+    this.announcedSegments,
     int? startIndex,
     int? endIndex,
     DateTime? createdAt,
@@ -72,10 +78,14 @@ class FsKex {
        startIndex = 0,
        endIndex = totalSegments,
        status = KeyExchangeStatus.inProgress,
+       announcedSegments = null,
        createdAt = createdAt ?? DateTime.now(),
        updatedAt = updatedAt ?? DateTime.now();
 
   int get totalSegments => segmentsByPeer[sourceId]?.length ?? 0;
+
+  /// Number of segments every participant must keep in the final key.
+  int get segmentsToKeep => announcedSegments ?? totalSegments;
 
   /// Liste stable des participants (clé du map)
   List<String> get participants => segmentsByPeer.keys.toList();
@@ -229,6 +239,7 @@ class FsKex {
         (s) => s.name == statusStr,
         orElse: () => KeyExchangeStatus.inProgress,
       ),
+      announcedSegments: data['totalSegments'] as int?,
       startIndex: data['startIndex'] as int? ?? 0,
       endIndex: data['endIndex'] as int? ?? 0,
       createdAt: parseDate(data['createdAt']),

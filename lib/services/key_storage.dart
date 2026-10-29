@@ -133,7 +133,9 @@ class KeyStorage {
       }
       _log.i('KeyStorage', 'updateUsedBytes: SUCCESS');
     } catch (e) {
+      // Callers must stop: if the bytes are not marked as used they could encrypt again.
       _log.e('KeyStorage', 'updateUsedBytes ERROR: $e');
+      rethrow;
     }
   }
 

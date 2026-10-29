@@ -157,7 +157,8 @@ class FirestoreService {
 
     // Delete associated key exchange sessions
     final sessions = await _firestore
-        .collection('key_exchange_sessions')
+        .collection('kex')
+        .where('participants', arrayContains: localUserId)
         .where('conversationId', isEqualTo: conversationId)
         .get();
     for (final doc in sessions.docs) {

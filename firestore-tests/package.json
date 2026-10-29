@@ -11,6 +11,6 @@
     "@firebase/rules-unit-testing": "latest",
     "chai": "^4.3.7",
     "firebase-tools": "^15.2.1",
-    "mocha": "^10.2.0"
+    "mocha": "^11.7.5"
   }
 }

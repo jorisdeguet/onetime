@@ -58,34 +58,29 @@ class MessageService {
     required Future<void> Function(SharedKey key) sendOperation,
     String? logPrefix,
   }) async {
+    // ÉTAPE 1: Acquérir un lock GLOBAL sur la conversation (les règles Firestore
+    // refusent un message de quelqu'un qui ne le détient pas)
     await _lockService.acquireLock(
       conversationId: conversationId,
       userId: _authService.currentUserId!,
     );
 
-    // ÉTAPE 1: Synchroniser tous les messages Firestore pour avoir les intervalles les plus récents
-    _log.d('MessageService', 'Syncing all Firestore messages before acquiring lock');
-    await rescanConversation(conversationId);
-
-    // Recharger la clé après la synchronisation (elle a pu être mise à jour)
-    final updatedKey = await _keyService.getKey(conversationId);
-    // ÉTAPE 2: Synchroniser avec l'état Firestore pour éviter la réutilisation de clé
-    await _syncWithFirestoreKeyState(conversationId, updatedKey);
-
-    // ÉTAPE 3: Valider l'état de la clé avant envoi
     try {
+      // ÉTAPE 2: Synchroniser tous les messages Firestore pour avoir les intervalles les plus récents
+      _log.d('MessageService', 'Syncing all Firestore messages while holding lock${logPrefix != null ? ' ($logPrefix)' : ''}');
+      await rescanConversation(conversationId);
+
+      // ÉTAPE 3: Synchroniser avec l'état Firestore pour éviter la réutilisation de clé
+      // (recharge la clé: le rescan a pu la faire avancer)
+      final updatedKey = await _syncWithFirestoreKeyState(
+        conversationId,
+        await _keyService.getKey(conversationId),
+      );
+
+      // ÉTAPE 4: Valider l'état de la clé avant envoi
       final validatedNextByte = updatedKey.validateState();
       _log.d('MessageService', 'Key state validated: nextAvailableByte=$validatedNextByte');
-    } catch (e) {
-      _log.e('MessageService', 'Key state validation failed before send: $e');
-      rethrow;
-    }
 
-    // ÉTAPE 4: Acquérir un lock GLOBAL sur la conversation
-    final nextByteIndex = updatedKey.nextAvailableByte;
-    _log.d('MessageService', 'Acquiring GLOBAL lock for conversation $conversationId (nextByte=$nextByteIndex)${logPrefix != null ? ' ($logPrefix)' : ''}');
-
-    try {
       // ÉTAPE 5: Exécuter l'opération d'envoi
       await sendOperation(updatedKey);
     } finally {
@@ -93,47 +88,46 @@ class MessageService {
       _log.d('MessageService', 'Releasing GLOBAL lock for conversation $conversationId${logPrefix != null ? ' ($logPrefix)' : ''}');
       await _lockService.releaseLock(
         conversationId: conversationId,
-        byteIndex: nextByteIndex,
+        byteIndex: 0,
         userId: _authService.currentUserId!,
       );
     }
   }
 
   /// Synchronise l'état local de la clé avec Firestore pour éviter la réutilisation
-  /// Prend le max de tous les nextAvailableByte des participants
-  Future<void> _syncWithFirestoreKeyState(String conversationId, SharedKey key) async {
-    try {
-      final conversation = await _conversationService.getConversation(conversationId);
-      if (conversation == null || conversation.keyDebugInfo.isEmpty) {
-        _log.w('MessageService', 'No keyDebugInfo available for sync');
-        return;
-      }
-      int maxNextAvailableByte = key.nextAvailableByte;
-      conversation.keyDebugInfo.forEach((userId, info) {
-        if (info is Map && info.containsKey('nextAvailableByte')) {
-          final participantNext = info['nextAvailableByte'] as int;
-          if (participantNext > maxNextAvailableByte) {
-            _log.w('MessageService',
-              'Participant $userId has nextAvailableByte=$participantNext, '
-              'local was $maxNextAvailableByte. Syncing to max.');
-            maxNextAvailableByte = participantNext;
-          }
-        }
-      });
-
-      // Si on a trouvé un nextAvailableByte plus grand, mettre à jour la clé locale
-      if (maxNextAvailableByte > key.nextAvailableByte) {
-        _log.i('MessageService',
-          'Syncing local key: advancing nextAvailableByte from ${key.nextAvailableByte} to $maxNextAvailableByte');
-        _log.i('MessageService', 'Key synchronized with Firestore state');
-      } else {
-        _log.d('MessageService',
-          'Local key is in sync (nextAvailableByte=${key.nextAvailableByte})');
-      }
-    } catch (e) {
-      _log.e('MessageService', 'Error syncing key state with Firestore: $e');
-      // Ne pas bloquer l'envoi si la sync échoue, juste logger l'erreur
+  /// Prend le max de tous les nextAvailableByte des participants (champ startByte
+  /// de keyDebugInfo) et consomme localement les octets jusque-là.
+  /// Retourne la clé à jour. Une erreur interrompt l'envoi.
+  Future<SharedKey> _syncWithFirestoreKeyState(String conversationId, SharedKey key) async {
+    final conversation = await _conversationService.getConversation(conversationId);
+    if (conversation == null || conversation.keyDebugInfo.isEmpty) {
+      _log.w('MessageService', 'No keyDebugInfo available for sync');
+      return key;
     }
+    int maxNextAvailableByte = key.nextAvailableByte;
+    conversation.keyDebugInfo.forEach((userId, info) {
+      if (info is Map && info['startByte'] is int) {
+        final participantNext = info['startByte'] as int;
+        if (participantNext > maxNextAvailableByte) {
+          _log.w('MessageService',
+            'Participant $userId has nextAvailableByte=$participantNext, '
+            'local was $maxNextAvailableByte. Syncing to max.');
+          maxNextAvailableByte = participantNext;
+        }
+      }
+    });
+
+    // Si on a trouvé un nextAvailableByte plus grand, mettre à jour la clé locale
+    if (maxNextAvailableByte > key.nextAvailableByte) {
+      _log.i('MessageService',
+        'Syncing local key: advancing nextAvailableByte from ${key.nextAvailableByte} to $maxNextAvailableByte');
+      await _keyService.updateUsedBytes(conversationId, key.nextAvailableByte, maxNextAvailableByte);
+      _log.i('MessageService', 'Key synchronized with Firestore state');
+      return _keyService.getKey(conversationId);
+    }
+    _log.d('MessageService',
+      'Local key is in sync (nextAvailableByte=${key.nextAvailableByte})');
+    return key;
   }
 
   /// Factorise le post-processing après chiffrement :
@@ -148,17 +142,18 @@ class MessageService {
     required KeyInterval usedSegment,
     required LocalMessage localData,
   }) async {
-    // Store decrypted message locally FIRST
-    await _messageStorage.saveDecryptedMessage(
-      conversationId: conversationId,
-      message: localData,
-    );
-
-    // consume local key
+    // Consume local key FIRST: if this fails, nothing is stored or sent,
+    // and these key bytes are never used for anything else.
     await _keyService.updateUsedBytes(
       conversationId,
       usedSegment.startIndex,
       usedSegment.endIndex,
+    );
+
+    // Store decrypted message locally
+    await _messageStorage.saveDecryptedMessage(
+      conversationId: conversationId,
+      message: localData,
     );
 
     // user has the message and assumes read
@@ -214,7 +209,7 @@ class MessageService {
     await _sendWithLock(
       conversationId: conversationID,
       sendOperation: (key) async {
-        _log.d('MessageService', '_sendMessage: "$text" in $conversationID');
+        _log.d('MessageService', '_sendMessage: ${text.length} chars in $conversationID');
 
         final result = _cryptoService.encrypt(
           plaintext: text,

@@ -16,6 +16,9 @@ class KeyService {
   Future<SharedKey> getKey(String conversationId) async
     => _keyStorage.getKey(conversationId);
 
+  Future<bool> hasKey(String conversationId) async
+    => _keyStorage.exists(conversationId);
+
   Future<void> updateUsedBytes(String conversationId, int startByte, int endByte) async
     => _keyStorage.updateUsedBytes(conversationId, startByte, endByte);
 
@@ -264,10 +267,24 @@ class KexSessionReader {
     _peerReadSegments[peerId]?.add(segmentIndex);
   }
 
+  /// Ne garde que les segments 0..count-1 (terminaison anticipée: seul ce préfixe
+  /// a été reçu par tous les participants).
+  void limitSegments(int count) {
+    _segmentData.removeWhere((index, _) => index >= count);
+  }
+
   /// Construit la clé partagée finale (fonctionne pour reader et source)
+  ///
+  /// Les segments doivent être exactement 0..n-1: un trou décalerait tous les
+  /// octets suivants par rapport aux autres participants.
   SharedKey buildSharedKey() {
     // Assembler tous les segments dans l'ordre
     final sortedIndexes = _segmentData.keys.toList()..sort();
+    for (int i = 0; i < sortedIndexes.length; i++) {
+      if (sortedIndexes[i] != i) {
+        throw StateError('Missing key segment $i: cannot build a key that matches the other participants');
+      }
+    }
 
     // Calculer la taille totale
     int totalBytes = 0;

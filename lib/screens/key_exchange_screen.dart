@@ -374,9 +374,17 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
         return;
       }
 
+      // La source a fixé le nombre de segments retenus (terminaison anticipée possible)
+      final expectedSegments = _firestoreSession!.segmentsToKeep;
+      _session!.limitSegments(expectedSegments);
+      if (_session!.totalSegments != expectedSegments) {
+        throw StateError(
+          'Segments manquants: ${_session!.totalSegments}/$expectedSegments reçus. Recommencez l\'échange.');
+      }
+
       SharedKey finalKey;
-      
-      try {
+
+      if (await _keyService.hasKey(conversation.id)) {
         final existingKey = await _keyService.getKey(conversation.id);
         _log.d('KeyExchange', 'Reader: Existing key: ${existingKey.lengthInBytes} bytes');
         final newKeyData = _keyService.finalizeExchange(_session!, force: true,);
@@ -384,7 +392,7 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
         finalKey = existingKey.extend(newKeyData.keyData);
         _log.d('KeyExchange', 'Reader: Extended key: ${finalKey.lengthInBytes} bytes');
       }
-      catch(e) {
+      else {
         finalKey = _keyService.finalizeExchange(
           _session!,
           force: true,
@@ -763,7 +771,7 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
       if (widget.existingConversationId != null) {
         // Conversation existante : vérifier si c'est une extension ou une création initiale
         conversationId = widget.existingConversationId!;
-        try {
+        if (await _keyService.hasKey(conversationId)) {
           existingKey = await _keyService.getKey(conversationId);
           _log.d('KeyExchange', 'Existing key found: ${existingKey.lengthInBytes} bytes - extending...');
           // Forcer la finalisation pour obtenir les nouveaux segments
@@ -772,7 +780,7 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
           // Étendre la clé existante avec les nouveaux bits
           finalKey = existingKey.extend(newKeyData.keyData);
           _log.d('KeyExchange', 'Extended key: ${finalKey.lengthInBytes} bytes');
-        } catch(e){
+        } else {
           _log.d('KeyExchange', 'No existing key - creating initial key for conversation');
           finalKey = _keyService.finalizeExchange((_session as KexSessionSource), force: true,);
           _log.d('KeyExchange', 'Initial key created: ${finalKey.lengthInBytes} bytes');
@@ -1244,6 +1252,10 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
       _log.d('TERMINATE', '⚠️  ERROR updating Firestore session: $e');
       // Continue anyway - readers will use force flag
     }
+
+    // Garder exactement les segments annoncés aux lecteurs, sinon la clé de la
+    // source serait plus longue que la leur et décalée à la prochaine extension.
+    _session!.limitSegments(segmentsToInclude);
 
     _log.d('TERMINATE', 'Proceeding to finalize exchange...');
     _log.d('TERMINATE', '═══════════════════════════════════════════════════');
