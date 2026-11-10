@@ -136,6 +136,27 @@ void main() {
     expect(source.currentPacket!.index, greaterThanOrEqualTo(32));
   });
 
+  test('continuous exchange ends when a reader stops, with what everyone holds', () async {
+    await source.start(600 * seg, continuous: true);
+    await settle();
+    for (int i = 0; i < 64; i++) {
+      while (source.session!.getSegmentData(i) == null) {
+        await settle();
+      }
+      await reader.onPayload(payload(i ~/ 32, i % 32));
+    }
+    await settle();
+    await reader.stop();
+    final sourceResult = await source.result;
+    await source.complete('conv');
+    final readerResult = await reader.result;
+
+    expect(sourceResult.newKey.keyData.length, 64 * seg);
+    expect(readerResult.newKey.keyData, sourceResult.newKey.keyData);
+    // Segments are generated just ahead of the display, not all 600 at once
+    expect(source.session!.currentSegmentIndex, lessThanOrEqualTo(256 + 1));
+  });
+
   test('reader ignores packets from another exchange', () async {
     await startExchange(2);
     await reader.onPayload(payload(0, 0));

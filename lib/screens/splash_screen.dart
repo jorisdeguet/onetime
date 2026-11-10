@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:onetime/widgets/onetime_logo.dart';
 
 import '../services/startup_health_check_service.dart';
 
@@ -40,6 +41,8 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            const OneTimeLogo(size: 120),
+            const SizedBox(height: 16),
             Text(
               '1 time',
               style: Theme.of(context).textTheme.headlineLarge?.copyWith(

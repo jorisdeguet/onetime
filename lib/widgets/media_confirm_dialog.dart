@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:onetime/theme/app_theme.dart';
 import 'package:onetime/models/firestore/fs_message.dart';
 
 import '../services/media_service.dart';
@@ -171,7 +172,7 @@ class _MediaConfirmDialogContentState extends State<_MediaConfirmDialogContent> 
                   Text(
                     '(${result.compressionPercent.toStringAsFixed(0)}% compressé)',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.green,
+                      color: Theme.of(context).colorScheme.statusOk,
                     ),
                   ),
                 ],
@@ -185,14 +186,14 @@ class _MediaConfirmDialogContentState extends State<_MediaConfirmDialogContent> 
                 Icon(
                   Icons.key,
                   size: 16,
-                  color: _hasEnoughKey ? Colors.green : Colors.red,
+                  color: _hasEnoughKey ? Theme.of(context).colorScheme.statusOk : Theme.of(context).colorScheme.error,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Clé nécessaire: ${mediaService.formatKeyBits(result.bitsNeeded)}',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: _hasEnoughKey ? null : Colors.red,
+                      color: _hasEnoughKey ? null : Theme.of(context).colorScheme.error,
                     ),
                   ),
                 ),
@@ -218,11 +219,11 @@ class _MediaConfirmDialogContentState extends State<_MediaConfirmDialogContent> 
             const SizedBox(height: 12),
             LinearProgressIndicator(
               value: _keyUsagePercent / 100,
-              backgroundColor: Colors.grey[300],
+              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
               valueColor: AlwaysStoppedAnimation<Color>(
                 _hasEnoughKey
-                    ? (_keyUsagePercent > 50 ? Colors.orange : Colors.green)
-                    : Colors.red,
+                    ? (_keyUsagePercent > 50 ? Theme.of(context).colorScheme.statusPending : Theme.of(context).colorScheme.statusOk)
+                    : Theme.of(context).colorScheme.error,
               ),
             ),
             const SizedBox(height: 4),
@@ -262,13 +263,13 @@ class _MediaConfirmDialogContentState extends State<_MediaConfirmDialogContent> 
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.red.withAlpha(25),
+                  color: Theme.of(context).colorScheme.error.withAlpha(25),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.red.withAlpha(76)),
+                  border: Border.all(color: Theme.of(context).colorScheme.error.withAlpha(76)),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.warning, color: Colors.red, size: 20),
+                    Icon(Icons.warning, color: Theme.of(context).colorScheme.error, size: 20),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -276,7 +277,7 @@ class _MediaConfirmDialogContentState extends State<_MediaConfirmDialogContent> 
                         '${isImage ? "Essayez une qualité inférieure ou " : ""}'
                         'effectuez un nouvel échange de clé.',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.red,
+                          color: Theme.of(context).colorScheme.error,
                         ),
                       ),
                     ),

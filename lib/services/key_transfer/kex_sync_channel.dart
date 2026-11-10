@@ -26,5 +26,7 @@ abstract class KexSyncChannel {
   Future<void> updateTotalSegments(String sessionId, int totalSegments, int totalKeyBytes);
   Future<void> setConversationId(String sessionId, String conversationId);
   Future<void> completeSession(String sessionId);
+  /// A reader asks the source to end the exchange now (continuous mode).
+  Future<void> requestStop(String sessionId, String participantId);
   Future<void> deleteSession(String sessionId);
 }

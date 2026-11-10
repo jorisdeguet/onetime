@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:onetime/theme/app_theme.dart';
 import 'package:onetime/services/key_service.dart';
 import 'package:onetime/services/firestore_service.dart';
 import 'package:onetime/services/format_service.dart';
@@ -74,12 +75,12 @@ class _ConversationInfoScreenState extends State<ConversationInfoScreen> {
                 children: [
                   CircleAvatar(
                     radius: 32,
-                    backgroundColor: Colors.orange.withAlpha(30),
+                    backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
                     child: Text(
                       widget.conversation.displayName.substring(0, 1).toUpperCase(),
                       style: TextStyle(
                         fontSize: 24,
-                        color: Colors.orange,
+                        color: Theme.of(context).colorScheme.statusPending,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -148,8 +149,8 @@ class _ConversationInfoScreenState extends State<ConversationInfoScreen> {
                 label: const Text('Supprimer la conversation'),
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.all(16),
-                  foregroundColor: Colors.red,
-                  side: const BorderSide(color: Colors.red),
+                  foregroundColor: Theme.of(context).colorScheme.error,
+                  side: BorderSide(color: Theme.of(context).colorScheme.error),
                 ),
               ),
             ),
@@ -177,7 +178,7 @@ class _ConversationInfoScreenState extends State<ConversationInfoScreen> {
               Navigator.pop(context); // Close dialog
               _deleteConversation();
             },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
             child: const Text('Supprimer'),
           ),
         ],

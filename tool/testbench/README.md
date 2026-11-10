@@ -28,7 +28,7 @@ unplugged keeps working. Builds without the define use the real project.
 
 ```bash
 tool/testbench/ot.sh install
-tool/testbench/scenario_exchange.sh <source-serial> <reader-serial> "8 KB"
+tool/testbench/scenario_exchange.sh <source-serial> <reader-serial> "256 Ko"
 ```
 
 The scenario wipes app data on both phones, then checks: onboarding, joining by scanning the conversation QR, key exchange (same key fingerprint and full requested size on both phones), pseudo exchange, and one message in each direction. Screenshots of both phones are saved to `build/testbench/` on failure.
@@ -38,7 +38,7 @@ camera app and sent in Large quality, then a 512 KB extension of the same
 conversation, a message and a second photo:
 
 ```bash
-OT_PHOTO=1 OT_EXTEND="512 KB" tool/testbench/scenario_exchange.sh <source-serial> <reader-serial> "1 MB"
+OT_PHOTO=1 OT_EXTEND="256 Ko" tool/testbench/scenario_exchange.sh <source-serial> <reader-serial> "1 Mo"
 ```
 
 Photos are checked byte for byte (fingerprint of the bytes sent against the

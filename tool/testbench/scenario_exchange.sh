@@ -4,7 +4,8 @@
 # then send one message in each direction and check it is decrypted.
 #
 # Usage: tool/testbench/scenario_exchange.sh <source-serial> <reader-serial> [key-size-label]
-#   key-size-label: one of the key buttons, default "8 KB"
+#   key-size-label: one of the key buttons ("256 Ko", "1 Mo", "Continu"), default "256 Ko".
+#   "Continu" streams until the reader taps Terminer after OT_STOP_AFTER seconds (default 60).
 #
 # Optional, after the messages:
 #   OT_PHOTO=1        the reader takes a photo with its camera app and sends it
@@ -18,7 +19,7 @@ set -euo pipefail
 OT="$(dirname "$0")/ot.sh"
 ADB="${ADB:-$HOME/Library/Android/sdk/platform-tools/adb}"
 PKG="org.deguet.jo.onetime"
-SRC="$1"; RDR="$2"; SIZE="${3:-8 KB}"
+SRC="$1"; RDR="$2"; SIZE="${3:-256 Ko}"
 fail() { echo "FAIL: $*"; "$OT" shot "$SRC" >/dev/null; "$OT" shot "$RDR" >/dev/null; exit 1; }
 pass() { echo "PASS: $*"; }
 # Last value of a JSON field in the OT_TEST events of one device
@@ -65,7 +66,7 @@ pass "conversation created on source"
 pass "reader joined by scanning the source's screen"
 sleep 2
 "$OT" tap "$SRC" "Valider" >/dev/null
-"$OT" wait "$SRC" "Générer une clé" 30 >/dev/null || fail "source did not reach key exchange"
+"$OT" wait "$SRC" "Afficher une clé" 30 >/dev/null || fail "source did not reach key exchange"
 "$OT" wait "$RDR" "Scanner une clé" 30 >/dev/null || fail "reader did not reach key exchange"
 "$OT" tap "$RDR" "Scanner une clé" >/dev/null
 sleep 2
@@ -74,7 +75,8 @@ sleep 2
 exchange_key() {
   local size="$1" want_new kex_start deadline src_before rdr_before
   case "$size" in
-    *MB) want_new=$(( ${size%% *} * 1024 * 1024 )) ;;
+    Continu) want_new=$(( 32 * 1024 )) ;;  # at least one block
+    *Mo|*MB) want_new=$(( ${size%% *} * 1024 * 1024 )) ;;
     *) want_new=$(( ${size%% *} * 1024 )) ;;
   esac
   src_before="$(event_field "$SRC" key_saved t)"; rdr_before="$(event_field "$RDR" key_saved t)"
@@ -82,6 +84,13 @@ exchange_key() {
   "$OT" tap "$SRC" "$size" >/dev/null
   # About 7 KB/s over QR, with a wide margin
   deadline=$(( kex_start + want_new / 3000 + 180 ))
+  if [ "$size" = Continu ]; then
+    sleep "${OT_STOP_AFTER:-60}"
+    # Back means Terminer during an exchange (the moving camera preview
+    # prevents uiautomator from finding the button by its label)
+    "$OT" key "$RDR" BACK
+    deadline=$(( $(date +%s) + 120 ))
+  fi
   until [ "$(event_field "$SRC" key_saved t)" != "$src_before" ]; do
     [ "$(date +%s)" -ge "$deadline" ] && fail "source never saved the key ($size)"
     sleep 2
@@ -111,7 +120,9 @@ wait_event "$SRC" message_decrypted "" 60 || fail "source did not decrypt the re
 pass "pseudos exchanged and decrypted"
 send_and_check() {
   local from="$1" to="$2" text="$3"
-  "$OT" field "$from" >/dev/null
+  # The phone may still be busy saving a large key
+  "$OT" wait "$from" "Envoyer image/fichier" 60 >/dev/null || fail "$from shows no conversation"
+  "$OT" field "$from" >/dev/null || fail "$from: could not focus the message field"
   "$OT" type "$from" "$text"
   "$OT" key "$from" ENTER
   wait_event "$from" message_sent "\"text\": *\"$text\"" 30 || fail "$from did not send '$text'"
@@ -159,7 +170,7 @@ if [ -n "${OT_EXTEND:-}" ]; then
   for s in "$SRC" "$RDR"; do
     "$OT" tap "$s" "Créer / étendre une clé" >/dev/null || fail "$s has no key button"
   done
-  "$OT" wait "$SRC" "Générer une clé" 30 >/dev/null || fail "source did not reach key extension"
+  "$OT" wait "$SRC" "Afficher une clé" 30 >/dev/null || fail "source did not reach key extension"
   "$OT" wait "$RDR" "Scanner une clé" 30 >/dev/null || fail "reader did not reach key extension"
   "$OT" tap "$RDR" "Scanner une clé" >/dev/null
   sleep 2

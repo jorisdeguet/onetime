@@ -37,6 +37,10 @@ class KexSourceController extends ChangeNotifier {
   KexSessionSource? session;
   FsKex? syncState;
   FountainPacket? currentPacket;
+
+  /// Continuous mode: streams up to the requested size until someone stops;
+  /// the key is then the prefix every reader holds.
+  bool continuous = false;
   Duration rotationInterval;
   FountainEncoder? _encoder;
   String? error;
@@ -73,8 +77,15 @@ class KexSourceController extends ChangeNotifier {
 
   int get totalSegments => session?.totalSegments ?? 0;
 
+  /// Segments generated ahead of the display (a continuous exchange may stop
+  /// long before its maximum size).
+  static const _generationLead = 256;
+
   /// Creates the shared session, shows the first segment and starts rotating.
-  Future<void> start(int totalBytes, {List<KeySegmentQrData>? preGeneratedSegments}) async {
+  /// With [continuous], [totalBytes] is only a maximum: the exchange goes on
+  /// until the source calls [terminate] or a reader asks to stop.
+  Future<void> start(int totalBytes, {List<KeySegmentQrData>? preGeneratedSegments, bool continuous = false}) async {
+    this.continuous = continuous;
     final segmentCount = (totalBytes + KeyService.segmentSizeBytes - 1) ~/ KeyService.segmentSizeBytes;
     syncState = await _sync.createSession(
       sourceId: localId,
@@ -108,12 +119,22 @@ class KexSourceController extends ChangeNotifier {
     syncState = state;
     _notify();
     if (_terminating || session == null) return;
+    // A stop request waits until there is something to keep
+    if (state.stopRequestedBy.isNotEmpty && canTerminate) {
+      _log.i('KeyExchange', 'Stop requested by ${state.stopRequestedBy.length} reader(s)');
+      unawaited(terminate());
+      return;
+    }
     for (int i = 0; i < session!.totalSegments; i++) {
       if (!state.allParticipantsScannedSegment(i)) return;
     }
     _log.i('KeyExchange', 'All segments complete - auto terminating');
     unawaited(terminate());
   }
+
+  /// True once every reader holds the first segment: ending the exchange then
+  /// keeps a key (the longest prefix everyone holds).
+  bool get canTerminate => syncState?.allParticipantsScannedSegment(0) ?? false;
 
   /// One rotation step: shows the next packet useful to some reader.
   void tick() {
@@ -172,7 +193,11 @@ class KexSourceController extends ChangeNotifier {
   }
 
   Future<void> _generateRemainingSegments() async {
-    while (!_disposed && session!.currentSegmentIndex < session!.totalSegments) {
+    while (!_disposed && !_terminating && session!.currentSegmentIndex < session!.totalSegments) {
+      if (session!.currentSegmentIndex - (_encoder?.symbolsShown ?? 0) >= _generationLead) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        continue;
+      }
       _keyService.generateNextSegment(session!);
       await Future.delayed(Duration.zero);
     }

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:onetime/widgets/onetime_logo.dart';
 import 'package:get_it/get_it.dart';
 import 'package:onetime/models/firestore/fs_message.dart';
 import 'package:onetime/services/message_storage.dart';
@@ -67,6 +68,8 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: Row(
           children: [
+            const OneTimeLogo(size: 28),
+            const SizedBox(width: 8),
             const Text(
               '1 time',
               style: TextStyle(fontWeight: FontWeight.bold),
@@ -225,7 +228,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                  Icon(Icons.error_outline, size: 48, color: Theme.of(context).colorScheme.error),
                   const SizedBox(height: 16),
                   Text('Erreur: ${snapshot.error}'),
                   const SizedBox(height: 16),
@@ -472,7 +475,7 @@ class _ConversationTileState extends State<_ConversationTile> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).primaryColor,
+                    color: Theme.of(context).colorScheme.primary,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(

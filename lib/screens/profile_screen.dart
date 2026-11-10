@@ -86,7 +86,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (context) => AlertDialog(
         title: Row(
           children: [
-            Icon(Icons.warning, color: Colors.red[700]),
+            Icon(Icons.warning, color: Theme.of(context).colorScheme.error),
             const SizedBox(width: 8),
             Text(l10n.get('profile_nuke_title')),
           ],
@@ -100,7 +100,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
+              backgroundColor: Theme.of(context).colorScheme.error,
               foregroundColor: Colors.white,
             ),
             child: const Text('💣 NUKE'),
@@ -136,7 +136,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(l10n.get('profile_nuke_success')),
-              backgroundColor: Colors.red,
+              backgroundColor: Theme.of(context).colorScheme.error,
               duration: const Duration(seconds: 3),
             ),
           );
@@ -342,7 +342,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Text(
                         l10n.get('settings_danger_zone'),
                         style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: Colors.red[700],
+                          color: Theme.of(context).colorScheme.error,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -361,8 +361,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           icon: const Icon(Icons.delete_sweep),
                           label: const Text('💣 NUKE'),
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.red,
-                            side: const BorderSide(color: Colors.red),
+                            foregroundColor: Theme.of(context).colorScheme.error,
+                            side: BorderSide(color: Theme.of(context).colorScheme.error),
                           ),
                         ),
                       ),

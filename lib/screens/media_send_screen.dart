@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:onetime/theme/app_theme.dart';
 import 'package:onetime/models/firestore/fs_message.dart';
 import 'package:onetime/services/lock_service.dart';
 import 'package:onetime/services/message_service.dart';
@@ -144,7 +145,7 @@ class _MediaSendScreenState extends State<MediaSendScreen> {
                         padding: const EdgeInsets.only(bottom: 8),
                         child: Text(
                           _errorMessage!,
-                          style: const TextStyle(color: Colors.red),
+                          style: TextStyle(color: Theme.of(context).colorScheme.error),
                           textAlign: TextAlign.center,
                         ),
                       ),
@@ -175,18 +176,18 @@ class _MediaSendScreenState extends State<MediaSendScreen> {
             SafeArea(
               child: Container(
                 padding: const EdgeInsets.all(16),
-                color: Colors.green[100],
-                child: const Row(
+                color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.check_circle, color: Colors.green, size: 32),
+                    Icon(Icons.check_circle, color: Theme.of(context).colorScheme.statusOk, size: 32),
                     SizedBox(width: 12),
                     Text(
                       'Envoyé avec succès!',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: Colors.green,
+                        color: Theme.of(context).colorScheme.statusOk,
                       ),
                     ),
                   ],

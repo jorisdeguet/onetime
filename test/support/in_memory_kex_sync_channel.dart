@@ -17,6 +17,7 @@ class InMemoryKexSyncChannel implements KexSyncChannel {
         segmentsByPeer: s.segmentsByPeer.map((k, v) => MapEntry(k, List<int>.from(v))),
         status: s.status,
         announcedSegments: s.announcedSegments,
+        stopRequestedBy: List.of(s.stopRequestedBy),
         startIndex: s.startIndex,
         endIndex: s.endIndex,
       );
@@ -83,6 +84,21 @@ class InMemoryKexSyncChannel implements KexSyncChannel {
   @override
   Future<void> completeSession(String sessionId) async {
     sessions[sessionId]!.status = KeyExchangeStatus.completed;
+    _publish(sessionId);
+  }
+
+  @override
+  Future<void> requestStop(String sessionId, String participantId) async {
+    final s = sessions[sessionId]!;
+    sessions[sessionId] = FsKex(
+      id: s.id,
+      conversationId: s.conversationId,
+      sourceId: s.sourceId,
+      segmentsByPeer: s.segmentsByPeer,
+      status: s.status,
+      announcedSegments: s.announcedSegments,
+      stopRequestedBy: {...s.stopRequestedBy, participantId}.toList(),
+    );
     _publish(sessionId);
   }
 

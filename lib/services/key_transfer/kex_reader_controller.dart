@@ -25,6 +25,10 @@ class KexReaderController extends ChangeNotifier {
 
   KexSessionReader? session;
   FountainDecoder? _decoder;
+  String? _sessionId;
+  bool _joining = false;
+  // Blocks rebuilt before the session was joined, stored once it is
+  final List<int> _blocksAwaitingSession = [];
   FsKex? syncState;
   String? error;
 
@@ -62,12 +66,28 @@ class KexReaderController extends ChangeNotifier {
     _processing = true;
     try {
       final packet = _codec.decode(payload);
-      if (session == null) await _join(packet);
-      if (session == null || packet.sessionId != session!.sessionId) return;
+      // Packets describe the transfer themselves: decoding starts at once and
+      // the session is joined meanwhile, so no code is lost while joining
+      if (_decoder == null) {
+        _sessionId = packet.sessionId;
+        _decoder = FountainDecoder(FountainLayout(
+          totalBytes: packet.totalBytes,
+          symbolSize: packet.symbolSize,
+          blockSymbols: packet.blockSymbols,
+        ));
+      }
+      if (packet.sessionId != _sessionId) return;
+      if (session == null && !_joining) unawaited(_join(packet.sessionId));
       final block = _decoder!.add(packet);
       error = null;
       _log.d('QR SCAN', 'Packet ${packet.block}/${packet.index} read ($segmentsRead known)');
-      if (block != null) _onBlockDecoded(block);
+      if (block != null) {
+        if (session == null) {
+          _blocksAwaitingSession.add(block);
+        } else {
+          _onBlockDecoded(block);
+        }
+      }
       _notify();
     } catch (e) {
       _log.e('QR SCAN', 'Payload rejected: $e');
@@ -77,6 +97,25 @@ class KexReaderController extends ChangeNotifier {
       _processing = false;
     }
   }
+
+  /// Asks the source to end the exchange now; every participant keeps what
+  /// all of them received.
+  Future<void> stop() async {
+    final id = session?.sessionId;
+    if (id == null) return;
+    // Acknowledge every block rebuilt so far first: the source keeps only
+    // what it knows everyone holds when it sees the stop request
+    for (int i = 0; i < 50 && (_sendingAcks || _pendingAcks.isNotEmpty); i++) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+    await _sync.requestStop(id, localId);
+  }
+
+  /// True once the first block is rebuilt: stopping then keeps a key.
+  bool get canStop => _decoder?.isBlockDecoded(0) ?? false;
+
+  /// Bytes rebuilt so far.
+  int get bytesRead => segmentsRead * KeyService.segmentSizeBytes;
 
   /// Applies a new snapshot of the shared session; finalizes once the source completes it.
   void onSyncUpdate(FsKex? state) {
@@ -136,23 +175,33 @@ class KexReaderController extends ChangeNotifier {
     unawaited(_sendAcks());
   }
 
-  Future<void> _join(FountainPacket packet) async {
-    final sessionId = packet.sessionId;
-    final state = await _sync.getSession(sessionId);
-    if (state == null) throw StateError('Session not found');
-    syncState = state;
-    session = _keyService.createReaderSession(
-      conversationId: conversationId,
-      sessionId: sessionId,
-      localPeerId: localId,
-      peerIds: state.participants,
-    );
-    _decoder = FountainDecoder(FountainLayout(
-      totalBytes: packet.totalBytes,
-      symbolSize: packet.symbolSize,
-      blockSymbols: packet.blockSymbols,
-    ));
-    _syncSubscription = _sync.watchSession(sessionId).listen(onSyncUpdate);
+  /// Joins the shared session; a failure is retried with the next packet.
+  Future<void> _join(String sessionId) async {
+    _joining = true;
+    try {
+      final state = await _sync.getSession(sessionId);
+      if (state == null) throw StateError('Session not found');
+      if (_disposed) return;
+      syncState = state;
+      session = _keyService.createReaderSession(
+        conversationId: conversationId,
+        sessionId: sessionId,
+        localPeerId: localId,
+        peerIds: state.participants,
+      );
+      _syncSubscription = _sync.watchSession(sessionId).listen(onSyncUpdate);
+      for (final block in _blocksAwaitingSession) {
+        _onBlockDecoded(block);
+      }
+      _blocksAwaitingSession.clear();
+      _notify();
+    } catch (e) {
+      _log.e('QR SCAN', 'Could not join session $sessionId: $e');
+      error = e.toString();
+      _notify();
+    } finally {
+      _joining = false;
+    }
   }
 
   void _finalize() {

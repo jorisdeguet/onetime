@@ -94,6 +94,14 @@ class KeyExchangeSyncService implements KexSyncChannel {
     });
   }
 
+  @override
+  Future<void> requestStop(String sessionId, String participantId) async {
+    await _sessionsRef.doc(sessionId).update({
+      'stopRequestedBy': FieldValue.arrayUnion([participantId]),
+      'updatedAt': Timestamp.fromDate(DateTime.now()),
+    });
+  }
+
   /// Met à jour le conversationId de la session
   @override
   Future<void> setConversationId(String sessionId, String conversationId) async {

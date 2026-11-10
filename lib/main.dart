@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/home_screen.dart';
 import 'screens/splash_screen.dart';
 import 'firebase_options.dart';
+import 'theme/app_theme.dart';
 import 'l10n/app_localizations.dart';
 import 'services/auth_service.dart';
 import 'screens/login_screen.dart';
@@ -82,20 +83,8 @@ class _MyAppState extends State<MyApp> {
         Locale('fr'),
       ],
       themeMode: _themeMode,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
       home: SplashScreen(
         nextScreen: AuthWrapper(onThemeModeChanged: _updateThemeMode),
       ),

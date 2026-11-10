@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:onetime/widgets/onetime_logo.dart';
 
 import '../screens/dev_screen.dart';
 import '../screens/home_screen.dart';
@@ -90,10 +91,12 @@ class _NavDrawerState extends State<NavDrawer> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
+                OneTimeLogo(size: 48, color: Theme.of(context).colorScheme.onPrimary),
+                const SizedBox(height: 8),
                 Text(
                   '1 time',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        color: Colors.white,
+                        color: Theme.of(context).colorScheme.onPrimary,
                         fontWeight: FontWeight.bold,
                       ),
                 ),
@@ -103,7 +106,7 @@ class _NavDrawerState extends State<NavDrawer> {
                     child: Text(
                       _myPseudo!,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Colors.white70,
+                            color: Theme.of(context).colorScheme.onPrimary.withAlpha(180),
                           ),
                       overflow: TextOverflow.ellipsis,
                     ),

@@ -41,9 +41,12 @@ service cloud.firestore {
       allow update: if isParticipant() && resource.data.sourceId == uid()
                     && request.resource.data.sourceId == resource.data.sourceId;
 
-      // A reader only reports its own scans.
+      // A reader only reports its own scans, and may ask the source to stop
+      // (continuous mode) by adding itself to stopRequestedBy.
       allow update: if isParticipant() && resource.data.sourceId != uid()
-                    && onlyChanges(['segmentsByPeer', 'participants', 'updatedAt', 'startIndex', 'endIndex'])
+                    && onlyChanges(['segmentsByPeer', 'participants', 'updatedAt', 'startIndex', 'endIndex', 'stopRequestedBy'])
+                    && request.resource.data.get('stopRequestedBy', []).toSet()
+                         .difference(resource.data.get('stopRequestedBy', []).toSet()).hasOnly([uid()])
                     && request.resource.data.participants.toSet() == resource.data.participants.toSet()
                     && request.resource.data.startIndex == resource.data.startIndex
                     && request.resource.data.endIndex == resource.data.endIndex

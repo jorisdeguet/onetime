@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:onetime/theme/app_theme.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'key_exchange_screen.dart';
@@ -142,15 +143,15 @@ class _JoinConversationScreenState extends State<JoinConversationScreen> {
         // Instructions
         Container(
           padding: const EdgeInsets.all(16),
-          color: Colors.blue[50],
+          color: Theme.of(context).colorScheme.surfaceContainerHigh,
           child: Row(
             children: [
-              Icon(Icons.info_outline, color: Colors.blue[700]),
+              Icon(Icons.info_outline, color: Theme.of(context).colorScheme.onSurfaceVariant),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   'Scannez le QR code affiché par le créateur de la conversation',
-                  style: TextStyle(color: Colors.blue[700]),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ),
             ],
@@ -172,15 +173,15 @@ class _JoinConversationScreenState extends State<JoinConversationScreen> {
         if (_errorMessage != null)
           Container(
             padding: const EdgeInsets.all(16),
-            color: Colors.red[100],
+            color: Theme.of(context).colorScheme.surfaceContainerHigh,
             child: Row(
               children: [
-                Icon(Icons.error_outline, color: Colors.red[700]),
+                Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     _errorMessage!,
-                    style: TextStyle(color: Colors.red[700]),
+                    style: TextStyle(color: Theme.of(context).colorScheme.error),
                   ),
                 ),
                 TextButton(
@@ -201,12 +202,12 @@ class _JoinConversationScreenState extends State<JoinConversationScreen> {
         children: [
           // Indicateur de statut
           Card(
-            color: Colors.green[50],
+            color: Theme.of(context).colorScheme.surfaceContainerHigh,
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  Icon(Icons.check_circle, color: Colors.green[700]),
+                  Icon(Icons.check_circle, color: Theme.of(context).colorScheme.statusOk),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -216,14 +217,14 @@ class _JoinConversationScreenState extends State<JoinConversationScreen> {
                           'Vous avez rejoint la conversation!',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            color: Colors.green[700],
+                            color: Theme.of(context).colorScheme.statusOk,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           'En attente que le créateur valide les participants...',
                           style: TextStyle(
-                            color: Colors.green[600],
+                            color: Theme.of(context).colorScheme.statusOk,
                             fontSize: 12,
                           ),
                         ),
@@ -272,7 +273,7 @@ class _JoinConversationScreenState extends State<JoinConversationScreen> {
                             final isMe = p['id'] == _currentUserId;
                             return Chip(
                               avatar: CircleAvatar(
-                                backgroundColor: isMe ? Colors.green : Colors.grey[300],
+                                backgroundColor: isMe ? Theme.of(context).colorScheme.statusOk : Theme.of(context).colorScheme.surfaceContainerHighest,
                                 child: Text(
                                   p['name']![0].toUpperCase(),
                                   style: TextStyle(
@@ -282,7 +283,7 @@ class _JoinConversationScreenState extends State<JoinConversationScreen> {
                                 ),
                               ),
                               label: Text(isMe ? '${p['name']} (vous)' : p['name']!),
-                              backgroundColor: isMe ? Colors.green[50] : null,
+                              backgroundColor: isMe ? Theme.of(context).colorScheme.surfaceContainerHigh : null,
                             );
                           }).toList(),
                         ),

@@ -71,20 +71,47 @@ class FountainLayout {
 
 /// Produces packets from the key symbols, in the order they should be shown:
 /// every symbol once, then repair packets for the blocks still incomplete.
+/// While symbols are still being shown, some packets repair earlier blocks
+/// someone still misses, so a long (continuous) transfer does not leave gaps
+/// until its very end: one in 4 while few blocks lag behind, up to one in 2
+/// as the backlog grows (a reader missing a quarter of the codes needs at
+/// least that many repairs to keep up).
 class FountainEncoder {
   final FountainLayout layout;
   final String sessionId;
   final Uint8List? Function(int symbol) symbolAt;
   int _nextSystematic = 0;
   int _repairCursor = 0;
+  int _packets = 0;
   late final List<int> _repairsSent = List.filled(layout.blockCount, 0);
 
   FountainEncoder({required this.layout, required this.sessionId, required this.symbolAt});
+
+  /// Symbols shown at least once so far.
+  int get symbolsShown => _nextSystematic;
 
   /// Next packet to show, skipping blocks [isBlockDone] reports as received
   /// by everyone; null when every block is done or the next symbol is not
   /// generated yet.
   FountainPacket? next(bool Function(int block) isBlockDone) {
+    _packets++;
+    if (_nextSystematic < layout.symbolCount) {
+      // Blocks whose symbols were all shown already, and how many lag behind
+      final shownBlocks = _nextSystematic ~/ layout.blockSymbols;
+      int lagging = 0;
+      for (int b = 0; b < shownBlocks; b++) {
+        if (!isBlockDone(b)) lagging++;
+      }
+      final repairEvery = lagging == 0 ? 0 : lagging <= 2 ? 4 : lagging <= 4 ? 3 : 2;
+      if (repairEvery > 0 && _packets % repairEvery == 0) {
+        // Only the prefix everyone holds is kept: every other repair goes to
+        // the first lagging block, the others take turns
+        final repair = _packets % (2 * repairEvery) == 0
+            ? _repairFirst(isBlockDone, shownBlocks)
+            : _repair(isBlockDone, shownBlocks);
+        if (repair != null) return repair;
+      }
+    }
     while (_nextSystematic < layout.symbolCount) {
       final symbol = _nextSystematic;
       final block = symbol ~/ layout.blockSymbols;
@@ -96,9 +123,24 @@ class FountainEncoder {
       if (packet != null) _nextSystematic++;
       return packet;
     }
-    for (int tries = 0; tries < layout.blockCount; tries++) {
-      final block = _repairCursor;
-      _repairCursor = (_repairCursor + 1) % layout.blockCount;
+    return _repair(isBlockDone, layout.blockCount);
+  }
+
+  /// Repair packet for the first incomplete block among the first [blocks].
+  FountainPacket? _repairFirst(bool Function(int block) isBlockDone, int blocks) {
+    for (int block = 0; block < blocks; block++) {
+      if (isBlockDone(block)) continue;
+      final index = layout.symbolsInBlock(block) + _repairsSent[block]++;
+      return packet(block, index);
+    }
+    return null;
+  }
+
+  /// Repair packet for the next incomplete block among the first [blocks].
+  FountainPacket? _repair(bool Function(int block) isBlockDone, int blocks) {
+    for (int tries = 0; tries < blocks; tries++) {
+      final block = _repairCursor % blocks;
+      _repairCursor = block + 1;
       if (isBlockDone(block)) continue;
       final index = layout.symbolsInBlock(block) + _repairsSent[block]++;
       return packet(block, index);

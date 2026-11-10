@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:onetime/theme/app_theme.dart';
 import 'package:get_it/get_it.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -175,7 +176,7 @@ class _NewConversationScreenState extends State<NewConversationScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.error_outline, size: 64, color: Colors.red),
+            Icon(Icons.error_outline, size: 64, color: Theme.of(context).colorScheme.error),
             const SizedBox(height: 16),
             Text(_errorMessage ?? 'Erreur de création'),
             const SizedBox(height: 16),
@@ -222,7 +223,7 @@ class _NewConversationScreenState extends State<NewConversationScreen> {
                               icon: const Icon(Icons.check),
                               label: const Text('Valider'),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green,
+                                backgroundColor: Theme.of(context).colorScheme.statusOk,
                                 foregroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                               ),
@@ -246,7 +247,7 @@ class _NewConversationScreenState extends State<NewConversationScreen> {
                                 : p['id']!;
                             return Chip(
                               label: Text(shortId),
-                              backgroundColor: isMe ? Colors.green[100] : null,
+                              backgroundColor: isMe ? Theme.of(context).colorScheme.surfaceContainerHigh : null,
                             );
                           }).toList(),
                         ),
@@ -297,7 +298,7 @@ class _NewConversationScreenState extends State<NewConversationScreen> {
             const SizedBox(height: 16),
             Text(
               _errorMessage!,
-              style: const TextStyle(color: Colors.red),
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
               textAlign: TextAlign.center,
             ),
           ],

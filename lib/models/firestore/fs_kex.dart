@@ -32,6 +32,10 @@ class FsKex {
   /// (only the prefix every reader scanned). Null until then.
   final int? announcedSegments;
 
+  /// Readers who asked the source to end the exchange (continuous mode: the
+  /// source keeps what every reader holds once someone stops).
+  final List<String> stopRequestedBy;
+
   final DateTime createdAt;
   DateTime updatedAt;
 
@@ -48,6 +52,7 @@ class FsKex {
     required this.segmentsByPeer,
     this.status = KeyExchangeStatus.inProgress,
     this.announcedSegments,
+    this.stopRequestedBy = const [],
     int? startIndex,
     int? endIndex,
     DateTime? createdAt,
@@ -79,6 +84,7 @@ class FsKex {
        endIndex = totalSegments,
        status = KeyExchangeStatus.inProgress,
        announcedSegments = null,
+       stopRequestedBy = const [],
        createdAt = createdAt ?? DateTime.now(),
        updatedAt = updatedAt ?? DateTime.now();
 
@@ -140,7 +146,7 @@ class FsKex {
      });
 
      return {
-       'segmentsByPeer': normalized.map((k, v) => MapEntry(k.toString(), v)),
+       'segmentsByPeer': normalized.map((k, v) => MapEntry(k.toString(), encodeSegments(v))),
        'participants': normalized.keys.toList(),
        // use server timestamp for authoritative update time
        'updatedAt': FieldValue.serverTimestamp(),
@@ -193,7 +199,7 @@ class FsKex {
       'id': id,
       'conversationId': conversationId,
       'sourceId': sourceId,
-      'segmentsByPeer': segmentsNormalized.map((k, v) => MapEntry(k.toString(), v)),
+      'segmentsByPeer': segmentsNormalized.map((k, v) => MapEntry(k.toString(), encodeSegments(v))),
       'participants': participants,
       'status': status.name,
       'totalSegments': segmentsNormalized[sourceId]?.length ?? 0,
@@ -212,10 +218,7 @@ class FsKex {
     final segmentsByPeerRaw = data['segmentsByPeer'] as Map<String, dynamic>? ?? {};
     final segmentsByPeer = <String, List<int>>{};
     segmentsByPeerRaw.forEach((key, value) {
-      // Assurer que la valeur est une liste d'entiers et triée
-      final list = List<int>.from(value as List);
-      list.sort();
-      segmentsByPeer[key] = list;
+      segmentsByPeer[key] = decodeSegments(value);
     });
 
     DateTime parseDate(dynamic v) {
@@ -245,11 +248,47 @@ class FsKex {
         orElse: () => KeyExchangeStatus.inProgress,
       ),
       announcedSegments: data['totalSegments'] as int?,
+      stopRequestedBy: List<String>.from(data['stopRequestedBy'] as List? ?? const []),
       startIndex: data['startIndex'] as int? ?? 0,
       endIndex: data['endIndex'] as int? ?? 0,
       createdAt: parseDate(data['createdAt']),
       updatedAt: parseDate(data['updatedAt']),
     );
+  }
+
+  /// Segment indexes as ranges, "start-end" (end exclusive) separated by
+  /// commas: a 30 MB key has 30720 segments, too many to store one by one
+  /// for every participant within Firestore's 1 MiB per document.
+  static String encodeSegments(List<int> sorted) {
+    final ranges = <String>[];
+    int i = 0;
+    while (i < sorted.length) {
+      final start = sorted[i];
+      int end = start + 1;
+      i++;
+      while (i < sorted.length && sorted[i] <= end) {
+        if (sorted[i] == end) end++;
+        i++;
+      }
+      ranges.add('$start-$end');
+    }
+    return ranges.join(',');
+  }
+
+  /// Reads [encodeSegments], or the older list of indexes.
+  static List<int> decodeSegments(Object? value) {
+    if (value is List) return List<int>.from(value)..sort();
+    if (value is! String || value.isEmpty) return <int>[];
+    final result = <int>[];
+    for (final range in value.split(',')) {
+      final dash = range.indexOf('-');
+      final start = int.parse(range.substring(0, dash));
+      final end = int.parse(range.substring(dash + 1));
+      for (int i = start; i < end; i++) {
+        result.add(i);
+      }
+    }
+    return result;
   }
 
   bool hasScannedLegacy(String participantId, int segmentIndex) {

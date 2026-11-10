@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:onetime/widgets/onetime_logo.dart';
 
 import 'home_screen.dart';
 import '../services/auth_service.dart';
@@ -68,11 +69,7 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 // Logo / Titre
-                Icon(
-                  Icons.lock_outline,
-                  size: 50,
-                  color: Theme.of(context).primaryColor,
-                ),
+                const OneTimeLogo(size: 88),
                 const SizedBox(height: 16),
                 Text(
                   '1 time',
@@ -94,18 +91,18 @@ class _LoginScreenState extends State<LoginScreen> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.red[50],
+                      color: Theme.of(context).colorScheme.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.red[200]!),
+                      border: Border.all(color: Theme.of(context).colorScheme.error.withAlpha(120)),
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.error_outline, color: Colors.red[700]),
+                        Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             _errorMessage!,
-                            style: TextStyle(color: Colors.red[700]),
+                            style: TextStyle(color: Theme.of(context).colorScheme.error),
                           ),
                         ),
                       ],
@@ -173,7 +170,7 @@ class _LoginScreenState extends State<LoginScreen> {
           child: ElevatedButton(
             onPressed: _createProfile,
             style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).primaryColor,
+              backgroundColor: Theme.of(context).colorScheme.primary,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),

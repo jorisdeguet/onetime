@@ -17,6 +17,8 @@ import 'package:onetime/services/firestore_service.dart';
 import 'package:onetime/services/auth_service.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:onetime/services/key_transfer/qr_payload.dart';
+import 'package:onetime/theme/app_theme.dart';
+import 'package:onetime/widgets/onetime_logo.dart';
 import 'package:onetime/widgets/qr_matrix_view.dart';
 import 'package:qr/qr.dart';
 import 'package:screen_brightness/screen_brightness.dart';
@@ -63,7 +65,11 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
   String? _errorMessage;
 
   // Taille de clé à générer (en octets)
-  int _keySizeBytes = 8192; // 8 KB par défaut
+  int _keySizeBytes = 256 * 1024;
+  bool _continuous = false;
+
+  /// Largest key a continuous exchange produces (about an hour of QR codes).
+  static const _continuousMaxBytes = 30 * 1024 * 1024;
 
   // Gestion de la luminosité
   double? _originalBrightness;
@@ -156,8 +162,8 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
       _currentStep = 1;
     });
     try {
-      final preGenSession = KeyPreGenerationService().consumeSession(_keySizeBytes);
-      await source.start(_keySizeBytes, preGeneratedSegments: preGenSession?.preGeneratedSegments);
+      final preGenSession = _continuous ? null : KeyPreGenerationService().consumeSession(_keySizeBytes);
+      await source.start(_keySizeBytes, preGeneratedSegments: preGenSession?.preGeneratedSegments, continuous: _continuous);
       _setMaxBrightness();
       final result = await source.result;
       await _finalizeAsSource(source, result);
@@ -264,111 +270,127 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
     return '${(bytes / 1024).round()} Ko';
   }
 
-  Widget _buildKeyGenButton(String label, int sizeInBits) {
-    final isSelected = _keySizeBytes == sizeInBits;
-    return ElevatedButton(
-      onPressed: () {
-        setState(() => _keySizeBytes = sizeInBits);
-        _startAsSource();
-      },
-      style: ElevatedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        backgroundColor: isSelected ? Theme.of(context).primaryColor : null,
-        foregroundColor: isSelected ? Colors.white : null,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.qr_code, size: 32),
-          const SizedBox(height: 4),
-          Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-        ],
+  /// One of the key size choices: a size and how long its QR codes take.
+  Widget _buildKeyGenButton(String label, String detail, int bytes, {bool continuous = false}) {
+    final scheme = Theme.of(context).colorScheme;
+    return Expanded(
+      child: OutlinedButton(
+        onPressed: () {
+          setState(() {
+            _keySizeBytes = bytes;
+            _continuous = continuous;
+          });
+          _startAsSource();
+        },
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 14),
+          foregroundColor: scheme.onSurface,
+          side: BorderSide(color: scheme.outline),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 2),
+            Text(detail, style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant), textAlign: TextAlign.center),
+          ],
+        ),
       ),
     );
+  }
+
+  /// True once some key bytes went through: leaving then ends the exchange
+  /// for everyone, keeping what all participants received.
+  bool get _hasReceivedSomething => _source?.canTerminate ?? _reader?.canStop ?? false;
+
+  void _stopExchange() {
+    if (_source != null) {
+      _source!.terminate();
+    } else {
+      _reader?.stop();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Échange de clé'),
+    return PopScope(
+      // Back acts as Terminer once something was received (before, it cancels)
+      canPop: _currentStep == 0 || !_hasReceivedSomething,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _stopExchange();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Échange de clé'),
+        ),
+        body: _currentStep == 0
+            ? _buildRoleSelection()
+            : _role == KeyExchangeRole.source
+                ? _buildSourceView()
+                : _buildReaderView(),
       ),
-      body: _currentStep == 0
-          ? _buildRoleSelection()
-          : _role == KeyExchangeRole.source
-              ? _buildSourceView()
-              : _buildReaderView(),
     );
   }
 
   Widget _buildRoleSelection() {
+    final scheme = Theme.of(context).colorScheme;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Instructions
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  const Icon(Icons.key, size: 48, color: Colors.amber),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Création de la clé partagée',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Un appareil génère la clé et l\'affiche en QR codes.\n'
-                    'Les autres appareils scannent pour recevoir la clé.',
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
+          const Center(child: OneTimeLogo(size: 72)),
+          const SizedBox(height: 16),
+          Text(
+            'Partager une clé',
+            style: Theme.of(context).textTheme.titleLarge,
+            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 8),
+          Text(
+            'Un appareil affiche la clé en QR codes, les autres la scannent.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: scheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 32),
 
           // Recevoir la clé d'un autre appareil
-          OutlinedButton.icon(
+          FilledButton.icon(
             onPressed: _startAsReader,
             icon: const Icon(Icons.qr_code_scanner),
             label: const Text('Scanner une clé'),
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.all(16),
-            ),
+            style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 32),
 
-          // Boutons de génération de clé
+          // Afficher une nouvelle clé
           Text(
-            'Générer une clé',
+            'Afficher une clé',
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 12),
-          
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          Row(
             children: [
-              _buildKeyGenButton('8 KB', 8192 ),
-              _buildKeyGenButton('32 KB', 32768 ),
-              _buildKeyGenButton('128 KB', 131072 ),
-              _buildKeyGenButton('512 KB', 524288 ),
-              _buildKeyGenButton('1 MB', 1 << 20),
-              _buildKeyGenButton('2 MB', 2 << 20),
-              _buildKeyGenButton('4 MB', 4 << 20),
-              _buildKeyGenButton('8 MB', 8 << 20),
+              _buildKeyGenButton('256 Ko', '~40 s', 256 * 1024),
+              const SizedBox(width: 8),
+              _buildKeyGenButton('1 Mo', '~2 min', 1 << 20),
+              const SizedBox(width: 8),
+              _buildKeyGenButton('Continu', "jusqu'à l'arrêt", _continuousMaxBytes, continuous: true),
             ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Environ 7 Ko par seconde. En continu, la clé grandit jusqu\'à ce que '
+            'quelqu\'un appuie sur Terminer (30 Mo au plus).',
+            style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
           ),
 
           if (_errorMessage != null) ...[
             const SizedBox(height: 16),
             Text(
               _errorMessage!,
-              style: const TextStyle(color: Colors.red),
+              style: TextStyle(color: scheme.error),
               textAlign: TextAlign.center,
             ),
           ],
@@ -386,12 +408,17 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
     return _qr!;
   }
 
+  static String _formatSize(int bytes) {
+    if (bytes >= 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} Mo';
+    return '${(bytes / 1024).round()} Ko';
+  }
+
   Widget _buildSourceView() {
     final source = _source;
     if (source == null || source.currentPacket == null) {
       return const Center(child: CircularProgressIndicator());
     }
-
+    final scheme = Theme.of(context).colorScheme;
     final session = source.session!;
     final firestoreSession = source.syncState;
     // Segments held by the slowest reader (readers acknowledge whole blocks)
@@ -399,291 +426,166 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
     final receivedByAll = readers.isEmpty
         ? 0
         : readers.map((p) => firestoreSession!.getParticipantProgress(p)).reduce((a, b) => a < b ? a : b);
-    final progress = receivedByAll / session.totalSegments;
+    final receivedBytes = receivedByAll * KeyService.segmentSizeBytes;
 
     return Column(
       children: [
-        // Top bar: Progress, segment count, and stop button on one line
+        // Progress and stop button
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          color: Theme.of(context).primaryColor.withAlpha(25),
-          child: SafeArea(
-            bottom: false,
-            child: Row(
-              children: [
-                // Progress indicator and segment count
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // List of participants who scanned current segment
-                      Text(
-                        'Reçu par tous: $receivedByAll/${session.totalSegments}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: LinearProgressIndicator(
-                              value: progress,
-                              backgroundColor: Colors.grey[300],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            source.currentLabel,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+          padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+          color: scheme.surfaceContainerHigh,
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      source.continuous
+                          ? 'Reçu par tous: ${_formatSize(receivedBytes)}'
+                          : 'Reçu par tous: ${_formatSize(receivedBytes)} / ${_formatSize(session.totalBytes)}',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: scheme.onSurface),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 6),
+                    LinearProgressIndicator(
+                      // Continuous: progress towards the maximum would barely move
+                      value: source.continuous ? null : receivedByAll / session.totalSegments,
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                // Stop button
-                // IconButton(
-                //   onPressed: _terminateKeyExchange,
-                //   icon: const Icon(Icons.stop_circle),
-                //   iconSize: 40,
-                //   color: session.currentSegmentIndex >= session.totalSegments
-                //       ? Colors.green
-                //       : Colors.orange,
-                //   tooltip: 'Terminer',
-                // ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 12),
+              FilledButton(
+                onPressed: source.canTerminate ? source.terminate : null,
+                child: const Text('Terminer'),
+              ),
+            ],
           ),
         ),
 
-        // QR Code - takes all remaining space
+        // QR code, always black on white so that cameras read it
         Expanded(
           child: Container(
             color: Colors.white,
-            child: Center(
-              child: AspectRatio(
-                aspectRatio: 1,
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    return Container(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Badge du numéro de segment
-                          Container(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: Colors.blue,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              source.currentLabel,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 18,
-                              ),
-                            ),
-                          ),
-                          // QR Code
-                          Expanded(
-                            child: QrMatrixView(qr: _qrFor(source.currentPayload!)),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
-        ),
-
-        // Bottom info bar
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          color: Theme.of(context).primaryColor.withAlpha(25),
-          child: SafeArea(
-            top: false,
+            padding: const EdgeInsets.all(16),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               children: [
-                if ((_errorMessage ?? source.error) != null) ...[
-                  Text(
-                    (_errorMessage ?? source.error)!,
-                    style: const TextStyle(color: Colors.red, fontSize: 11),
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2B2B2B),
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                  const SizedBox(height: 4),
-                ],
-                // Show interval in seconds with one decimal (e.g. 0.6s)
-                Text(
-                  '🔄 ${(source.rotationInterval.inMilliseconds / 1000).toStringAsFixed(1)}s/code',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 11, color: Colors.grey[700]),
+                  child: Text(
+                    source.currentLabel,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                ),
+                Expanded(
+                  child: Center(child: QrMatrixView(qr: _qrFor(source.currentPayload!))),
                 ),
               ],
             ),
           ),
         ),
+
+        if ((_errorMessage ?? source.error) != null)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(8),
+            color: scheme.surfaceContainerHigh,
+            child: Text(
+              (_errorMessage ?? source.error)!,
+              style: TextStyle(color: scheme.error, fontSize: 12),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
       ],
     );
   }
 
   Widget _buildReaderView() {
     final reader = _reader!;
-    final firestoreSession = reader.syncState;
+    final scheme = Theme.of(context).colorScheme;
     final segmentsRead = reader.segmentsRead;
     final totalSegments = reader.totalSegments;
     final isCompleted = reader.isCompleted;
-    // Check if current user has finished scanning all segments
-    final currentUserFinished = reader.hasFinishedScanning || (totalSegments > 0 && segmentsRead >= totalSegments);
+    final continuous = totalSegments * KeyService.segmentSizeBytes >= _continuousMaxBytes;
+    final currentUserFinished = !continuous && (reader.hasFinishedScanning || (totalSegments > 0 && segmentsRead >= totalSegments));
     final shouldShowScanner = !currentUserFinished && !isCompleted;
+
+    final status = isCompleted
+        ? 'Échange terminé'
+        : currentUserFinished
+            ? 'Clé reçue, en attente des autres'
+            : segmentsRead == 0
+                ? 'Visez les QR codes de l\'autre appareil'
+                : continuous
+                    ? 'Réception continue: ${_formatSize(reader.bytesRead)}'
+                    : 'Réception: ${_formatSize(reader.bytesRead)} / ${_formatSize(totalSegments * KeyService.segmentSizeBytes)}';
 
     return Column(
       children: [
-        // Barre de progression pour l'utilisateur actuel
-        LinearProgressIndicator(
-          value: totalSegments > 0 ? segmentsRead / totalSegments : 0,
-        ),
-        Padding(
-          padding: const EdgeInsets.all(8),
-          child: Text(
-            'Segments lus: $segmentsRead / $totalSegments',
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-        ),
-
-        // Statut de la session
-        if (firestoreSession != null)
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: isCompleted ? Colors.green[50] : (currentUserFinished ? Colors.amber[50] : Colors.blue[50]),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: isCompleted ? Colors.green : (currentUserFinished ? Colors.amber : Colors.blue),
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+          color: scheme.surfaceContainerHigh,
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(status, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: scheme.onSurface)),
+                    const SizedBox(height: 6),
+                    LinearProgressIndicator(
+                      value: continuous || totalSegments == 0 ? null : segmentsRead / totalSegments,
+                    ),
+                  ],
+                ),
               ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  isCompleted ? Icons.check_circle : (currentUserFinished ? Icons.check_circle_outline : Icons.sync),
-                  color: isCompleted ? Colors.green : (currentUserFinished ? Colors.amber : Colors.blue),
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  isCompleted
-                      ? 'Échange terminé! Redirection...'
-                      : (currentUserFinished 
-                          ? 'Vous avez terminé! En attente des autres...'
-                          : 'Scanning en cours...'),
-                  style: TextStyle(
-                    color: isCompleted ? Colors.green[800] : (currentUserFinished ? Colors.amber[800] : Colors.blue[800]),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
+              const SizedBox(width: 12),
+              // Ends the exchange for everyone with what all participants received
+              FilledButton(
+                onPressed: reader.canStop && !isCompleted ? reader.stop : null,
+                child: const Text('Terminer'),
+              ),
+            ],
           ),
+        ),
 
-        // Progress bars for all peers (when current user has finished)
-        if (currentUserFinished && !isCompleted && firestoreSession != null)
+        if (currentUserFinished && !isCompleted && reader.syncState != null)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Progression des participants:',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-                const SizedBox(height: 8),
-                ..._buildPeerProgressBars(firestoreSession),
-              ],
+              children: _buildPeerProgressBars(reader.syncState!),
             ),
           ),
 
         Expanded(
           child: shouldShowScanner
-              ? Stack(
-                  children: [
-                    MobileScanner(
-                      controller: _scannerController,
-                      onDetect: (capture) {
-                        for (final barcode in capture.barcodes) {
-                          if (barcode.rawValue != null) reader.onPayload(barcode.rawValue!);
-                        }
-                      },
-                    ),
-                    // Overlay d'aide au scan
-                    Positioned(
-                      top: 16,
-                      left: 16,
-                      right: 16,
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withAlpha(179),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          '📷 Positionnez le QR code dans le cadre\n'
-                          'Le QR change automatiquement',
-                           textAlign: TextAlign.center,
-                           style: const TextStyle(
-                             color: Colors.white,
-                             fontSize: 12,
-                           ),
-                        ),
-                      ),
-                    ),
-                  ],
+              ? MobileScanner(
+                  controller: _scannerController,
+                  onDetect: (capture) {
+                    for (final barcode in capture.barcodes) {
+                      if (barcode.rawValue != null) reader.onPayload(barcode.rawValue!);
+                    }
+                  },
                 )
               : Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        isCompleted ? Icons.celebration : Icons.check_circle,
-                        size: 64,
-                        color: isCompleted ? Colors.amber : Colors.green,
-                      ),
+                      Icon(Icons.check_circle_outline, size: 64, color: scheme.statusOk),
                       const SizedBox(height: 16),
-                      Text(
-                        isCompleted
-                            ? 'Échange terminé!'
-                            : (currentUserFinished
-                                ? 'Scan terminé!'
-                                : 'Segment $segmentsRead reçu!'),
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        isCompleted
-                            ? 'Redirection vers la conversation...'
-                            : (currentUserFinished
-                                ? 'En attente des autres participants...'
-                                : 'Attendez que la source affiche le prochain QR code'),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.grey[600]),
-                      ),
+                      Text(status, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                       if (isCompleted) ...[
                         const SizedBox(height: 16),
                         const CircularProgressIndicator(),
@@ -695,11 +597,12 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
 
         if ((_errorMessage ?? reader.error) != null)
           Container(
-            padding: const EdgeInsets.all(16),
-            color: Colors.red[100],
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            color: scheme.surfaceContainerHigh,
             child: Text(
               (_errorMessage ?? reader.error)!,
-              style: TextStyle(color: Colors.red[900]),
+              style: TextStyle(color: scheme.error),
             ),
           ),
       ],
@@ -707,21 +610,13 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
   }
 
   List<Widget> _buildPeerProgressBars(FsKex session) {
-    // Get all other participants (excluding current user)
-    final otherPeers = session.otherParticipants.where((p) => p != _currentUserId).toList();
-    
-    // Sort by progress (most finished first)
-    otherPeers.sort((a, b) {
-      final progressA = session.getParticipantProgress(a);
-      final progressB = session.getParticipantProgress(b);
-      return progressB.compareTo(progressA);
-    });
-
+    final scheme = Theme.of(context).colorScheme;
+    final otherPeers = session.otherParticipants.where((p) => p != _currentUserId).toList()
+      ..sort((a, b) => session.getParticipantProgress(b).compareTo(session.getParticipantProgress(a)));
     return otherPeers.map((peerId) {
       final progress = session.getParticipantProgress(peerId);
       final isFinished = session.hasParticipantFinishedScanning(peerId);
       final shortId = peerId.length > 8 ? peerId.substring(0, 8) : peerId;
-
       return Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: Column(
@@ -729,35 +624,16 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
           children: [
             Row(
               children: [
-                Icon(
-                  isFinished ? Icons.check_circle : Icons.person,
-                  size: 16,
-                  color: isFinished ? Colors.green : Colors.grey,
-                ),
+                Icon(isFinished ? Icons.check_circle : Icons.person_outline, size: 16,
+                    color: isFinished ? scheme.statusOk : scheme.statusIdle),
                 const SizedBox(width: 8),
-                Text(
-                  shortId,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isFinished ? Colors.green[700] : Colors.grey[700],
-                  ),
-                ),
+                Text(shortId, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
                 const Spacer(),
-                Text(
-                  '$progress/${session.totalSegments}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey[600],
-                  ),
-                ),
+                Text('$progress/${session.totalSegments}', style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
               ],
             ),
             const SizedBox(height: 4),
-            LinearProgressIndicator(
-              value: session.totalSegments > 0 ? progress / session.totalSegments : 0,
-              backgroundColor: Colors.grey[300],
-              color: isFinished ? Colors.green : Colors.blue,
-            ),
+            LinearProgressIndicator(value: session.totalSegments > 0 ? progress / session.totalSegments : 0),
           ],
         ),
       );

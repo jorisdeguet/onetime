@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:onetime/theme/app_theme.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:onetime/screens/conversation_info_screen.dart';
 import 'package:onetime/models/firestore/fs_message.dart';
@@ -217,7 +218,7 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
             child: const Text('Supprimer'), // TODO i18n
           ),
         ],
@@ -290,7 +291,7 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(e.message),
-            backgroundColor: Colors.orange,
+            backgroundColor: Theme.of(context).colorScheme.statusPending,
             duration: const Duration(seconds: 4),
           ),
         );
@@ -301,7 +302,7 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Erreur lors de l\'envoi: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: Theme.of(context).colorScheme.error,
             duration: const Duration(seconds: 3),
           ),
         );
@@ -516,7 +517,7 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
                   Icon(
                     Icons.lock,
                     size: 12,
-                    color: Colors.green,
+                    color: Theme.of(context).colorScheme.statusOk,
                   ),
                 ],
               ),
@@ -526,13 +527,13 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
         actions: [
           if (_hasKeyConsistencyIssue())
             IconButton(
-              icon: const Icon(Icons.broken_image, color: Colors.red),
+              icon: Icon(Icons.broken_image, color: Theme.of(context).colorScheme.error),
               tooltip: 'Incohérence de clé détectée',
               onPressed: () {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Attention: Les clés des participants semblent désynchronisées.'),
-                    backgroundColor: Colors.red,
+                  SnackBar(
+                    content: const Text('Attention: Les clés des participants semblent désynchronisées.'),
+                    backgroundColor: Theme.of(context).colorScheme.error,
                   ),
                 );
               },
@@ -704,7 +705,7 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
               right: 16,
               child: FloatingActionButton.small(
                 onPressed: _scrollToBottom,
-                backgroundColor: Theme.of(context).primaryColor,
+                backgroundColor: Theme.of(context).colorScheme.primary,
                 child: const Icon(Icons.arrow_downward, color: Colors.white),
               ),
             ),
@@ -818,9 +819,9 @@ class _MessageBubbleNewState extends State<_MessageBubbleNew> {
       }
     } else {
       // Only local - lock icon (safe)
-      return const Tooltip(
+      return Tooltip(
         message: 'Stocké localement uniquement',
-        child: Icon(Icons.lock_outline, size: 14, color: Colors.green),
+        child: Icon(Icons.lock_outline, size: 14, color: Theme.of(context).colorScheme.statusOk),
       );
     }
   }
@@ -855,7 +856,7 @@ class _MessageBubbleNewState extends State<_MessageBubbleNew> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.check_circle, color: Colors.green, size: 16),
+                    Icon(Icons.check_circle, color: Theme.of(context).colorScheme.statusOk, size: 16),
                     const SizedBox(width: 6),
                     Text(' $pseudoName', style: TextStyle(color: isMine ? Theme.of(context).colorScheme.onPrimaryContainer : Colors.black87, fontWeight: FontWeight.w600)),
                   ],

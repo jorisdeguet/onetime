@@ -53,6 +53,23 @@ void main() {
     }
   });
 
+  test('a long transfer with 25% loss keeps up instead of leaving gaps to the end', () {
+    const layout = FountainLayout(totalBytes: 30 * 1024 * 1024, symbolSize: 1024);
+    final key = randomBytes(1024);
+    final encoder = FountainEncoder(layout: layout, sessionId: 's', symbolAt: (_) => key);
+    final decoder = FountainDecoder(layout);
+    for (int shown = 0; shown < 3000; shown++) {
+      final packet = encoder.next(decoder.isBlockDecoded)!;
+      if (random.nextDouble() >= 0.25) decoder.add(packet);
+    }
+    final behind = encoder.symbolsShown ~/ layout.blockSymbols - decoder.decodedBlocks;
+    // ignore: avoid_print
+    print('3000 packets at 25% loss: ${encoder.symbolsShown} symbols shown, ${decoder.decodedBlocks} blocks rebuilt, $behind behind');
+    expect(behind, lessThanOrEqualTo(6));
+    // The key still grows at about the rate the reader receives codes
+    expect(decoder.decodedBlocks * 32, greaterThan(3000 * 0.75 * 0.8));
+  });
+
   test('repair packets of one block are different and never empty', () {
     const layout = FountainLayout(totalBytes: 32 * 1024, symbolSize: 1024);
     final masks = {for (int i = 32; i < 132; i++) layout.mask(0, i)};
