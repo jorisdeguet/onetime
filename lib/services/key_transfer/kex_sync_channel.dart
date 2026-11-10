@@ -16,10 +16,11 @@ abstract class KexSyncChannel {
   });
   Future<FsKex?> getSession(String sessionId);
   Stream<FsKex?> watchSession(String sessionId);
-  Future<void> markSegmentScanned({
+  /// Records that [participantId] holds every segment in [segmentIndexes].
+  Future<void> markSegmentsScanned({
     required String sessionId,
     required String participantId,
-    required int segmentIndex,
+    required List<int> segmentIndexes,
   });
   /// Announces how many segments every participant keeps (early termination).
   Future<void> updateTotalSegments(String sessionId, int totalSegments, int totalKeyBytes);

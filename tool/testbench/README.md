@@ -31,7 +31,22 @@ Events: `conversation_created`, `conversation_joined`, `key_saved`, `message_sen
 
 ## Baseline (Nov 2026, REVVL 2 source → Pixel 3 reader, QR torrent mode)
 
-| Key | Before Phase 1 | After Phase 1 (rotation fix) |
-|---|---|---|
-| 8 KB | 15–16 s | 13 s |
-| 32 KB | 34 s | 27 s (~1.2 KB/s) |
+Time from the size button to the key saved on both phones.
+
+| Key | Before Phase 1 | Phase 1 (rotation fix) | Phase 2a |
+|---|---|---|---|
+| 8 KB | 15–16 s | 13 s | 10 s |
+| 32 KB | 34 s | 27 s | 18 s (~1.8 KB/s) |
+
+Phase 2a steps, measured at 32 KB:
+
+| Change | 32 KB |
+|---|---|
+| Base45 payload in alphanumeric mode (QR 141 → 125 modules), 600 ms rotation | 26 s |
+| Reader acknowledges in the background, in batches; 300 ms rotation | 21 s |
+| Error correction L instead of M (QR 125 → 109 modules) | 18 s |
+
+The Pixel reads every code it is shown: scanning is bound by the rotation
+interval. About 8 s of each exchange is fixed overhead (session setup,
+finalization). The REVVL sees the reader's acknowledgements several seconds
+late, so ack-driven rotation shows segments again that were already read.

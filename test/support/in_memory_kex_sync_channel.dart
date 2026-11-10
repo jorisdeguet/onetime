@@ -53,12 +53,14 @@ class InMemoryKexSyncChannel implements KexSyncChannel {
   Stream<FsKex?> watchSession(String sessionId) => _controller(sessionId).stream;
 
   @override
-  Future<void> markSegmentScanned({
+  Future<void> markSegmentsScanned({
     required String sessionId,
     required String participantId,
-    required int segmentIndex,
+    required List<int> segmentIndexes,
   }) async {
-    sessions[sessionId]!.addScannedSegment(participantId: participantId, segmentIndex: segmentIndex);
+    for (final i in segmentIndexes) {
+      sessions[sessionId]!.addScannedSegment(participantId: participantId, segmentIndex: i);
+    }
     _publish(sessionId);
   }
 

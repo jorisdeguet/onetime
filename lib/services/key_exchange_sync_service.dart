@@ -65,41 +65,24 @@ class KeyExchangeSyncService implements KexSyncChannel {
 
   /// Notifie que le participant courant a scanné un segment
   @override
-  Future<void> markSegmentScanned({
+  Future<void> markSegmentsScanned({
     required String sessionId,
     required String participantId,
-    required int segmentIndex,
+    required List<int> segmentIndexes,
   }) async {
-    _log.d('KeyExchange', '════════════════════════════════════════');
-    _log.d('KeyExchange', 'markSegmentScanned called:');
-    _log.d('KeyExchange', '  sessionId: $sessionId');
-    _log.d('KeyExchange', '  participantId: ${participantId.substring(0, 8)}...');
-    _log.d('KeyExchange', '  segmentIndex: $segmentIndex');
-
     final docRef = _sessionsRef.doc(sessionId);
-
     await _firestore.runTransaction((transaction) async {
       final snapshot = await transaction.get(docRef);
-      if (!snapshot.exists) {
-        _log.w('KeyExchange', '❌ ERROR: Session not found');
-        throw Exception('Session not found');
-      }
-
+      if (!snapshot.exists) throw Exception('Session not found');
       final session = FsKex.fromFirestore(snapshot.data()!);
-      if (!session.hasScanned(participantId, segmentIndex)) {
-        session.addScannedSegment(
-          participantId: participantId,
-          segmentIndex: segmentIndex,
-        );
-        var updates = session.computeFirestoreUpdatesForSegments();
-        transaction.update(docRef, updates);
-        _log.i('KeyExchange', '✅ Transaction update queued');
-      } else {
-        _log.i('KeyExchange', 'ℹ️  Participant already scanned this segment - no update needed');
+      final missing = segmentIndexes.where((i) => !session.hasScanned(participantId, i)).toList();
+      if (missing.isEmpty) return;
+      for (final i in missing) {
+        session.addScannedSegment(participantId: participantId, segmentIndex: i);
       }
+      transaction.update(docRef, session.computeFirestoreUpdatesForSegments());
     });
-
-    _log.d('KeyExchange', '════════════════════════════════════════');
+    _log.d('KeyExchange', 'Segments $segmentIndexes acknowledged for ${participantId.substring(0, 8)}...');
   }
 
   /// Marque la session comme terminée

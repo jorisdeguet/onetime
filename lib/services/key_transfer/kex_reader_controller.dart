@@ -30,6 +30,8 @@ class KexReaderController extends ChangeNotifier {
   final Completer<KexResult> _result = Completer<KexResult>();
   StreamSubscription<FsKex?>? _syncSubscription;
   bool _processing = false;
+  final Set<int> _pendingAcks = {};
+  bool _sendingAcks = false;
   bool _finalizing = false;
   bool _disposed = false;
 
@@ -38,7 +40,7 @@ class KexReaderController extends ChangeNotifier {
     required KeyService keyService,
     required this.localId,
     required this.conversationId,
-    SegmentCodec codec = const JsonSegmentCodec(),
+    SegmentCodec codec = const Base45SegmentCodec(),
   })  : _sync = sync,
         _keyService = keyService,
         _codec = codec;
@@ -64,14 +66,12 @@ class KexReaderController extends ChangeNotifier {
       if (session == null || segment.sessionId != session!.sessionId) return;
       if (session!.hasScannedSegment(segment.segmentIndex)) return;
       _keyService.recordReadSegment(session!, segment);
-      _notify();
-      await _sync.markSegmentScanned(
-        sessionId: segment.sessionId,
-        participantId: localId,
-        segmentIndex: segment.segmentIndex,
-      );
-      _log.i('QR SCAN', 'Segment ${segment.segmentIndex} acknowledged ($segmentsRead read)');
+      _log.i('QR SCAN', 'Segment ${segment.segmentIndex} read ($segmentsRead read)');
       error = null;
+      _notify();
+      // Acknowledged in the background so the camera is not blocked by the network
+      _pendingAcks.add(segment.segmentIndex);
+      unawaited(_sendAcks());
     } catch (e) {
       _log.e('QR SCAN', 'Payload rejected: $e');
       error = e.toString();
@@ -87,6 +87,32 @@ class KexReaderController extends ChangeNotifier {
     syncState = state;
     _notify();
     if (state.status == KeyExchangeStatus.completed) _finalize();
+  }
+
+  /// Sends every pending acknowledgement, several per write while one is in flight.
+  Future<void> _sendAcks() async {
+    if (_sendingAcks) return;
+    _sendingAcks = true;
+    try {
+      while (_pendingAcks.isNotEmpty && !_disposed) {
+        final batch = _pendingAcks.toList()..sort();
+        _pendingAcks.clear();
+        try {
+          await _sync.markSegmentsScanned(
+            sessionId: session!.sessionId,
+            participantId: localId,
+            segmentIndexes: batch,
+          );
+        } catch (e) {
+          // Retried with the next batch; the source keeps showing these segments meanwhile
+          _log.w('QR SCAN', 'Acknowledgement of $batch failed: $e');
+          _pendingAcks.addAll(batch);
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+      }
+    } finally {
+      _sendingAcks = false;
+    }
   }
 
   Future<void> _join(String sessionId) async {

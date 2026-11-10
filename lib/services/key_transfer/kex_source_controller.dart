@@ -46,6 +46,10 @@ class KexSourceController extends ChangeNotifier {
   bool _disposed = false;
   // Segments each reader had acknowledged when the current rotation round started
   final Map<String, int> _progressAtRoundStart = {};
+  // Display time since the round started; short rounds are judged together
+  // with the next one, since acknowledgements take up to a second to come back
+  Duration _roundDisplayTime = Duration.zero;
+  static const _minRoundToJudge = Duration(seconds: 2);
 
   KexSourceController({
     required KexSyncChannel sync,
@@ -53,8 +57,8 @@ class KexSourceController extends ChangeNotifier {
     required this.localId,
     required this.conversationId,
     required this.peerIds,
-    SegmentCodec codec = const JsonSegmentCodec(),
-    this.rotationInterval = const Duration(milliseconds: 600),
+    SegmentCodec codec = const Base45SegmentCodec(),
+    this.rotationInterval = const Duration(milliseconds: 300),
     this.autoRotate = true,
   })  : _sync = sync,
         _keyService = keyService,
@@ -114,6 +118,7 @@ class KexSourceController extends ChangeNotifier {
     for (int offset = 1; offset <= total; offset++) {
       final index = (displayed + offset) % total;
       if (syncState!.allParticipantsScannedSegment(index)) continue;
+      _roundDisplayTime += rotationInterval;
       if (index < displayed) _onRoundCompleted();
       if (index != displayed) _showSegment(index);
       return;
@@ -176,6 +181,8 @@ class KexSourceController extends ChangeNotifier {
 
   /// Slows the rotation when some reader acknowledged nothing during a whole round.
   void _onRoundCompleted() {
+    if (_roundDisplayTime < _minRoundToJudge) return;
+    _roundDisplayTime = Duration.zero;
     bool someoneMissedRound = false;
     for (final peer in syncState!.otherParticipants) {
       final progress = syncState!.getParticipantProgress(peer);
@@ -183,7 +190,7 @@ class KexSourceController extends ChangeNotifier {
       _progressAtRoundStart[peer] = progress;
     }
     if (!someoneMissedRound) return;
-    rotationInterval += const Duration(seconds: 1);
+    rotationInterval *= 1.5;
     _log.d('Torrent', 'A reader missed a whole round, interval now ${rotationInterval.inMilliseconds}ms');
     if (autoRotate) _startRotation();
   }

@@ -109,20 +109,41 @@ void main() {
   });
 
   test('rotation slows down only when a reader missed a whole round', () async {
-    await startExchange(3);
+    await startExchange(8);
     final initial = source.rotationInterval;
-    // Round with no acknowledgement: 0 -> 1 -> 2 -> wraps to 0
-    for (int i = 0; i < 3; i++) {
+    // Round with no acknowledgement: 0 -> 7 -> wraps to 0 (8 x 300 ms)
+    for (int i = 0; i < 8; i++) {
       source.tick();
     }
-    expect(source.rotationInterval, initial + const Duration(seconds: 1));
+    expect(source.rotationInterval, initial * 1.5);
     // Round where the reader acknowledged a segment: no further slow-down
     await reader.onPayload(payload(1));
     await settle();
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < 7; i++) {
       source.tick();
     }
-    expect(source.rotationInterval, initial + const Duration(seconds: 1));
+    expect(source.rotationInterval, initial * 1.5);
+  });
+
+  test('a short round is judged together with the next one', () async {
+    await startExchange(8);
+    for (final i in [1, 2, 3, 4, 5]) {
+      await reader.onPayload(payload(i));
+    }
+    await settle();
+    final initial = source.rotationInterval;
+    // Only 0, 6 and 7 remain: a 900 ms round, shorter than an acknowledgement may take
+    for (int i = 0; i < 3; i++) {
+      source.tick();
+    }
+    expect(source.rotationInterval, initial);
+    await reader.onPayload(payload(6));
+    await settle();
+    // Two more short rounds with an acknowledgement in between: still no slow-down
+    for (int i = 0; i < 4; i++) {
+      source.tick();
+    }
+    expect(source.rotationInterval, initial);
   });
 
   test('rotation skips segments everyone already holds', () async {

@@ -16,6 +16,7 @@ import 'package:onetime/services/app_logger.dart';
 import 'package:onetime/services/firestore_service.dart';
 import 'package:onetime/services/auth_service.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:onetime/services/key_transfer/qr_payload.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../services/test_events.dart';
@@ -475,10 +476,8 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
                           ),
                           // QR Code
                           Expanded(
-                            child: QrImageView(
-                              data: source.currentPayload!,
-                              version: QrVersions.auto,
-                              errorCorrectionLevel: QrErrorCorrectLevel.M,
+                            child: QrImageView.withQr(
+                              qr: QrPayload.build(source.currentPayload!),
                               backgroundColor: Colors.white,
                               eyeStyle: const QrEyeStyle(
                                 eyeShape: QrEyeShape.square,
