@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -15,10 +16,19 @@ import 'services/auth_service.dart';
 import 'screens/login_screen.dart';
 import 'services/pseudo_service.dart';
 
+/// Set with `--dart-define=USE_FIREBASE_EMULATOR=true` (see tool/testbench).
+const _useFirebaseEmulator = bool.fromEnvironment('USE_FIREBASE_EMULATOR');
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Utiliser les options générées pour initialiser Firebase (évite le besoin du plist dans le projet iOS)
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  if (_useFirebaseEmulator) {
+    // Testbench: Firestore and Auth emulators on the Mac, reached through
+    // `adb reverse` (no 10.0.2.2 mapping: these are physical phones)
+    FirebaseFirestore.instance.useFirestoreEmulator('localhost', 8080, automaticHostMapping: false);
+    await FirebaseAuth.instance.useAuthEmulator('localhost', 9099, automaticHostMapping: false);
+  }
 
   runApp(const MyApp());
 }

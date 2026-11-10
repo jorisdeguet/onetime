@@ -302,7 +302,7 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
   }
 
   Widget _buildRoleSelection() {
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -331,7 +331,18 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
           ),
           const SizedBox(height: 24),
 
-          // Boutons de génération de clé (4 tailles)
+          // Recevoir la clé d'un autre appareil
+          OutlinedButton.icon(
+            onPressed: _startAsReader,
+            icon: const Icon(Icons.qr_code_scanner),
+            label: const Text('Scanner une clé'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.all(16),
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Boutons de génération de clé
           Text(
             'Générer une clé',
             style: Theme.of(context).textTheme.titleMedium,
@@ -346,19 +357,11 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
               _buildKeyGenButton('32 KB', 32768 ),
               _buildKeyGenButton('128 KB', 131072 ),
               _buildKeyGenButton('512 KB', 524288 ),
+              _buildKeyGenButton('1 MB', 1 << 20),
+              _buildKeyGenButton('2 MB', 2 << 20),
+              _buildKeyGenButton('4 MB', 4 << 20),
+              _buildKeyGenButton('8 MB', 8 << 20),
             ],
-          ),
-          
-          const SizedBox(height: 24),
-
-          // Bouton de scan
-          OutlinedButton.icon(
-            onPressed: _startAsReader,
-            icon: const Icon(Icons.qr_code_scanner),
-            label: const Text('Ou scanner une clé'),
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.all(16),
-            ),
           ),
 
           if (_errorMessage != null) ...[

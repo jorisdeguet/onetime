@@ -10,6 +10,20 @@ Drives two physical Android phones over `adb` for end-to-end tests. The reader's
   timings close to a release build (test events are emitted in both).
 - Firebase config present (`lib/firebase_options.dart`, `android/app/google-services.json`).
 
+## Firebase emulators (recommended)
+
+Runs Firestore and Auth on the Mac and reaches them from the phones over USB
+(`adb reverse`): no Wi-Fi, no quota, a clean database every time.
+
+```bash
+tool/testbench/emulators.sh        # leave running (Java 21 from Homebrew)
+flutter build apk --profile --dart-define=USE_FIREBASE_EMULATOR=true
+export OT_APK=$PWD/build/app/outputs/flutter-apk/app-profile.apk
+```
+
+The scenario forwards the ports again on every run, so a phone that was
+unplugged keeps working. Builds without the define use the real project.
+
 ## Run
 
 ```bash
@@ -41,6 +55,7 @@ Time from the size button to the key saved on both phones.
 | 32 KB | 34 s | 27 s | 18 s | |
 | 128 KB | | | 49 s | 24 s |
 | 512 KB | | | | 77 s (~6.8 KB/s) |
+| 1 MB | | | | 139 s (~7.5 KB/s) |
 
 About 8 s of each exchange is fixed overhead (session setup, finalization).
 

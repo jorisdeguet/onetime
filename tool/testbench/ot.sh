@@ -6,6 +6,7 @@
 #   install [serial...]          install the debug APK (all devices if none given)
 #   launch <serial>              (re)start the app
 #   reset <serial>               clear app data (fresh install state)
+#   reverse <serial>             forward the Firebase emulator ports (8080, 9099) to the phone
 #   ui <serial>                  print visible labels with tap coordinates
 #   tap <serial> <label>         tap the first element whose label contains <label>
 #   field <serial>               focus the first text field
@@ -53,6 +54,9 @@ case "$cmd" in
     "$ADB" -s "$1" shell am force-stop "$PKG"
     "$ADB" -s "$1" shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 ;;
   reset) "$ADB" -s "$1" shell pm clear "$PKG" ;;
+  reverse)
+    "$ADB" -s "$1" reverse tcp:8080 tcp:8080 >/dev/null
+    "$ADB" -s "$1" reverse tcp:9099 tcp:9099 >/dev/null ;;
   ui) list_ui "$1" ;;
   tap)
     xy="$(find_label "$1" "$2")"

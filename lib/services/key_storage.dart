@@ -102,11 +102,28 @@ class KeyStorage {
   }
 
   /// Updates used bytes for a key (startByte inclusive, endByte exclusive)
-  Future<void> updateUsedBytes(String conversationId, int startByte, int endByte) async {
+  // Last pending updateUsedBytes per conversation, to run them one at a time
+  final Map<String, Future<void>> _usedBytesUpdates = {};
+
+  /// Marks [startByte, endByte) as consumed. Calls for one conversation run
+  /// one at a time: sending and receiving may both mark the same message, and
+  /// two interleaved prefix truncations would each remove the bytes.
+  Future<void> updateUsedBytes(String conversationId, int startByte, int endByte) {
+    final previous = _usedBytesUpdates[conversationId] ?? Future<void>.value();
+    final update = previous.catchError((_) {}).then((_) => _updateUsedBytes(conversationId, startByte, endByte));
+    _usedBytesUpdates[conversationId] = update;
+    return update;
+  }
+
+  Future<void> _updateUsedBytes(String conversationId, int startByte, int endByte) async {
     _log.i('KeyStorage', 'updateUsedBytes: $conversationId, $startByte-$endByte');
 
     try {
       final key = await getKey(conversationId);
+      if (endByte <= key.nextAvailableByte) {
+        _log.d('KeyStorage', 'updateUsedBytes: $startByte-$endByte already consumed');
+        return;
+      }
       int oldNextAvailableByte = key.nextAvailableByte;
       key.markBytesAsUsed(startByte, endByte);
 

@@ -32,6 +32,7 @@ wait_event() {
 }
 onboard() {
   "$OT" reset "$1" >/dev/null
+  "$OT" reverse "$1"  # Firebase emulator ports, used by emulator builds only
   "$ADB" -s "$1" shell pm grant "$PKG" android.permission.CAMERA
   "$OT" clearlog "$1"
   "$OT" launch "$1"
@@ -58,17 +59,21 @@ pass "reader joined by scanning the source's screen"
 sleep 2
 "$OT" tap "$SRC" "Valider" >/dev/null
 "$OT" wait "$SRC" "Générer une clé" 30 >/dev/null || fail "source did not reach key exchange"
-"$OT" wait "$RDR" "Ou scanner une clé" 30 >/dev/null || fail "reader did not reach key exchange"
-"$OT" tap "$RDR" "Ou scanner une clé" >/dev/null
+"$OT" wait "$RDR" "Scanner une clé" 30 >/dev/null || fail "reader did not reach key exchange"
+"$OT" tap "$RDR" "Scanner une clé" >/dev/null
 sleep 2
 kex_start=$(date +%s)
 "$OT" tap "$SRC" "$SIZE" >/dev/null
-wait_event "$SRC" key_saved "" 600 || fail "source never saved a key"
+case "$SIZE" in
+  *MB) want_bytes=$(( ${SIZE%% *} * 1024 * 1024 )) ;;
+  *) want_bytes=$(( ${SIZE%% *} * 1024 )) ;;
+esac
+# About 7 KB/s over QR, with a wide margin
+wait_event "$SRC" key_saved "" $(( want_bytes / 3000 + 180 )) || fail "source never saved a key"
 wait_event "$RDR" key_saved "" 120 || fail "reader never saved a key"
 kex_secs=$(( $(date +%s) - kex_start ))
 src_bytes="$(event_field "$SRC" key_saved bytes)"; rdr_bytes="$(event_field "$RDR" key_saved bytes)"
 src_fp="$(event_field "$SRC" key_saved fingerprint)"; rdr_fp="$(event_field "$RDR" key_saved fingerprint)"
-want_bytes=$(( ${SIZE%% *} * 1024 ))
 echo "      key exchange: ${kex_secs}s, source ${src_bytes} B, reader ${rdr_bytes} B"
 [ "$src_fp" = "$rdr_fp" ] || fail "key fingerprints differ ($src_fp vs $rdr_fp)"
 pass "both phones hold identical key bytes ($src_fp)"

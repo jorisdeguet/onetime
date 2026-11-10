@@ -265,6 +265,7 @@ class MessageService {
             isCompressed: result.message.isCompressed,
           ),
         );
+        TestEvents.emit('media_sent', {'conversationId': conversationId, 'messageId': result.message.id, 'bytes': media.data.length, 'fingerprint': TestEvents.keyFingerprint(media.data)});
       },
     );
   }
@@ -492,6 +493,7 @@ class MessageService {
             keySegmentEnd: keySegmentEndByte,
           ),
         );
+        TestEvents.emit('media_decrypted', {'conversationId': conversationId, 'messageId': msg.id, 'bytes': decryptedBin.length, 'fingerprint': TestEvents.keyFingerprint(decryptedBin)});
       }
 
       await _keyService.updateUsedBytes(

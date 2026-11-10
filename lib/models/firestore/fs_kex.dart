@@ -95,13 +95,18 @@ class FsKex {
       // renvoyer les clés de segmentsByPeer sauf la source
       segmentsByPeer.keys.where((p) => p != sourceId).toList();
 
+  // Sets built from segmentsByPeer on demand: the lists hold up to one entry
+  // per segment (8192 for 8 MiB) and are checked segment by segment
+  final Map<String, Set<int>> _scannedSets = {};
+  Set<int> _scanned(String participantId) =>
+      _scannedSets[participantId] ??= (segmentsByPeer[participantId] ?? const <int>[]).toSet();
+
   bool allParticipantsScannedSegment(int segmentIndex) {
-    return otherParticipants.every((participantId) =>
-        segmentsByPeer[participantId]?.contains(segmentIndex) ?? false);
+    return otherParticipants.every((participantId) => _scanned(participantId).contains(segmentIndex));
   }
 
   bool hasParticipantScannedSegment(String participantId, int segmentIndex) {
-    return segmentsByPeer[participantId]?.contains(segmentIndex) ?? false;
+    return _scanned(participantId).contains(segmentIndex);
   }
 
   /// Getter calculé: map segmentIndex -> liste de participants qui l'ont scanné
@@ -120,7 +125,7 @@ class FsKex {
   /// Ajouter un scan (mutable helper utilisé pendant une transaction locale)
   void addScannedSegment({required String participantId, required int segmentIndex}) {
     final list = segmentsByPeer.putIfAbsent(participantId, () => <int>[]);
-    if (!list.contains(segmentIndex)) {
+    if (_scanned(participantId).add(segmentIndex)) {
       list.add(segmentIndex);
       list.sort();
     }
