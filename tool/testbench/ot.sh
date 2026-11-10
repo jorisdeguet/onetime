@@ -24,14 +24,19 @@ APK="${OT_APK:-$ROOT/build/app/outputs/flutter-apk/app-debug.apk}"
 OT_OUT="${OT_OUT:-$ROOT/build/testbench}"
 mkdir -p "$OT_OUT"
 dump_ui() {
+  # Remove the previous dump first: a failed dump would otherwise return a stale screen
+  "$ADB" -s "$1" shell rm -f /sdcard/ot_ui.xml
   "$ADB" -s "$1" shell uiautomator dump /sdcard/ot_ui.xml >/dev/null 2>&1
-  "$ADB" -s "$1" exec-out cat /sdcard/ot_ui.xml
+  "$ADB" -s "$1" exec-out cat /sdcard/ot_ui.xml 2>/dev/null || true
 }
 # Prints "x y label" for every node that has a label (content-desc, text or hint)
 list_ui() {
   dump_ui "$1" | python3 -c '
 import re, sys, xml.etree.ElementTree as ET
-root = ET.fromstring(sys.stdin.read())
+try:
+    root = ET.fromstring(sys.stdin.read())
+except ET.ParseError:
+    sys.exit(0)  # no dump (screen busy): report nothing, callers retry
 for n in root.iter("node"):
     label = n.get("content-desc") or n.get("text") or n.get("hint") or ""
     if not label.strip():

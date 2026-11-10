@@ -6,6 +6,13 @@
 # Usage: tool/testbench/scenario_exchange.sh <source-serial> <reader-serial> [key-size-label]
 #   key-size-label: one of the key buttons, default "8 KB"
 #
+# Optional, after the messages:
+#   OT_PHOTO=1        the reader takes a photo with its camera app and sends it
+#                     (quality OT_PHOTO_QUALITY, default "Large"); the source
+#                     must decrypt the same bytes. Needs a key larger than the photo.
+#   OT_EXTEND=<size>  extend the conversation's key with a second exchange of
+#                     <size> (a key button label), then send another photo if OT_PHOTO=1
+#
 # Prints a PASS/FAIL line per check and exits non-zero on the first failure.
 set -euo pipefail
 OT="$(dirname "$0")/ot.sh"
@@ -62,23 +69,39 @@ sleep 2
 "$OT" wait "$RDR" "Scanner une clé" 30 >/dev/null || fail "reader did not reach key exchange"
 "$OT" tap "$RDR" "Scanner une clé" >/dev/null
 sleep 2
-kex_start=$(date +%s)
-"$OT" tap "$SRC" "$SIZE" >/dev/null
-case "$SIZE" in
-  *MB) want_bytes=$(( ${SIZE%% *} * 1024 * 1024 )) ;;
-  *) want_bytes=$(( ${SIZE%% *} * 1024 )) ;;
-esac
-# About 7 KB/s over QR, with a wide margin
-wait_event "$SRC" key_saved "" $(( want_bytes / 3000 + 180 )) || fail "source never saved a key"
-wait_event "$RDR" key_saved "" 120 || fail "reader never saved a key"
-kex_secs=$(( $(date +%s) - kex_start ))
-src_bytes="$(event_field "$SRC" key_saved bytes)"; rdr_bytes="$(event_field "$RDR" key_saved bytes)"
-src_fp="$(event_field "$SRC" key_saved fingerprint)"; rdr_fp="$(event_field "$RDR" key_saved fingerprint)"
-echo "      key exchange: ${kex_secs}s, source ${src_bytes} B, reader ${rdr_bytes} B"
-[ "$src_fp" = "$rdr_fp" ] || fail "key fingerprints differ ($src_fp vs $rdr_fp)"
-pass "both phones hold identical key bytes ($src_fp)"
-[ "$src_bytes" = "$want_bytes" ] || fail "key is $src_bytes bytes, expected $want_bytes"
-pass "full requested key size kept ($want_bytes B)"
+# Exchanges a key of $1 (button label) and waits for a new key_saved event on
+# each phone (compared by timestamp: logcat drops old events on long runs)
+exchange_key() {
+  local size="$1" want_new kex_start deadline src_before rdr_before
+  case "$size" in
+    *MB) want_new=$(( ${size%% *} * 1024 * 1024 )) ;;
+    *) want_new=$(( ${size%% *} * 1024 )) ;;
+  esac
+  src_before="$(event_field "$SRC" key_saved t)"; rdr_before="$(event_field "$RDR" key_saved t)"
+  kex_start=$(date +%s)
+  "$OT" tap "$SRC" "$size" >/dev/null
+  # About 7 KB/s over QR, with a wide margin
+  deadline=$(( kex_start + want_new / 3000 + 180 ))
+  until [ "$(event_field "$SRC" key_saved t)" != "$src_before" ]; do
+    [ "$(date +%s)" -ge "$deadline" ] && fail "source never saved the key ($size)"
+    sleep 2
+  done
+  deadline=$(( $(date +%s) + 120 ))
+  until [ "$(event_field "$RDR" key_saved t)" != "$rdr_before" ]; do
+    [ "$(date +%s)" -ge "$deadline" ] && fail "reader never saved the key ($size)"
+    sleep 2
+  done
+  local secs=$(( $(date +%s) - kex_start ))
+  src_bytes="$(event_field "$SRC" key_saved bytes)"; rdr_bytes="$(event_field "$RDR" key_saved bytes)"
+  local src_fp rdr_fp
+  src_fp="$(event_field "$SRC" key_saved fingerprint)"; rdr_fp="$(event_field "$RDR" key_saved fingerprint)"
+  echo "      key exchange ($size): ${secs}s, source ${src_bytes} B, reader ${rdr_bytes} B"
+  [ "$src_fp" = "$rdr_fp" ] || fail "key fingerprints differ ($src_fp vs $rdr_fp)"
+  pass "both phones hold identical key bytes ($src_fp)"
+  [ "$src_bytes" -ge "$want_new" ] || fail "key is $src_bytes bytes, expected at least $want_new"
+  pass "requested key size kept ($want_new B new)"
+}
+exchange_key "$SIZE"
 # Both phones open the conversation and introduce themselves without any tap
 for s in "$SRC" "$RDR"; do
   wait_event "$s" message_sent "" 30 || fail "$s did not send its pseudo automatically"
@@ -97,4 +120,52 @@ send_and_check() {
 }
 send_and_check "$SRC" "$RDR" "ping-$RANDOM"
 send_and_check "$RDR" "$SRC" "pong-$RANDOM"
+
+# The reader photographs whatever its camera sees (the source's screen) and
+# sends it from the gallery; the source must decrypt the same bytes.
+send_photo() {
+  local from="$1" to="$2" quality="${OT_PHOTO_QUALITY:-Large}" photo fp sent
+  "$ADB" -s "$from" shell am start -a android.media.action.STILL_IMAGE_CAMERA >/dev/null
+  sleep 4
+  "$ADB" -s "$from" shell input keyevent KEYCODE_CAMERA
+  sleep 3
+  photo="$("$ADB" -s "$from" shell ls -t /sdcard/DCIM/Camera | head -1 | tr -d '\r')"
+  "$ADB" -s "$from" shell am start -n "$PKG/.MainActivity" >/dev/null 2>&1
+  sleep 3
+  "$OT" tap "$from" "Envoyer image/fichier" >/dev/null || fail "$from has no attachment button"
+  sleep 1
+  "$OT" tap "$from" "Galerie" >/dev/null
+  "$OT" wait "$from" "$photo, " 20 >/dev/null || fail "$from picker does not show $photo"
+  "$OT" tap "$from" "$photo, " >/dev/null
+  "$OT" wait "$from" "Envoyer (" 30 >/dev/null || fail "$from send screen did not appear"
+  "$OT" tap "$from" "$quality" >/dev/null
+  sleep 4
+  sent="$(event_field "$from" media_sent t)"
+  "$OT" tap "$from" "Envoyer (" >/dev/null
+  local deadline=$(( $(date +%s) + 60 ))
+  until [ "$(event_field "$from" media_sent t)" != "$sent" ]; do
+    [ "$(date +%s)" -ge "$deadline" ] && fail "$from did not send the photo"
+    sleep 1
+  done
+  fp="$(event_field "$from" media_sent fingerprint)"
+  wait_event "$to" media_decrypted "\"fingerprint\": *\"$fp\"" 120 || fail "$to did not decrypt the photo"
+  pass "photo $photo ($(event_field "$from" media_sent bytes) B, $quality) sent and decrypted identically"
+  # The send screen closes itself once the photo is sent
+  "$OT" wait "$from" "Envoyer image/fichier" 20 >/dev/null || fail "$from did not return to the conversation"
+}
+[ "${OT_PHOTO:-}" = 1 ] && send_photo "$RDR" "$SRC"
+
+if [ -n "${OT_EXTEND:-}" ]; then
+  for s in "$SRC" "$RDR"; do
+    "$OT" tap "$s" "Créer / étendre une clé" >/dev/null || fail "$s has no key button"
+  done
+  "$OT" wait "$SRC" "Générer une clé" 30 >/dev/null || fail "source did not reach key extension"
+  "$OT" wait "$RDR" "Scanner une clé" 30 >/dev/null || fail "reader did not reach key extension"
+  "$OT" tap "$RDR" "Scanner une clé" >/dev/null
+  sleep 2
+  exchange_key "$OT_EXTEND"
+  sleep 3
+  send_and_check "$SRC" "$RDR" "after-extension-$RANDOM"
+  [ "${OT_PHOTO:-}" = 1 ] && send_photo "$RDR" "$SRC"
+fi
 echo "ALL PASSED in $(( $(date +%s) - start ))s"

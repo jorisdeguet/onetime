@@ -39,6 +39,9 @@ class MessageService {
   final AppLogger _log = AppLogger();
 
   final Map<String, StreamSubscription<List<EncryptedMessage>>> _subscriptions = {};
+  // Conversations to keep listening to, and the wait before restarting a failed listener
+  final Set<String> _listenedConversations = {};
+  final Map<String, Duration> _listenRetryDelays = {};
   final Map<String, Set<String>> _processing = {};
   StreamSubscription<List<Conversation>>? _conversationsSub;
   final Set<String> _activeConversations = {};
@@ -151,26 +154,22 @@ class MessageService {
       usedSegment.endIndex,
     );
 
-    // Store decrypted message locally
-    await _messageStorage.saveDecryptedMessage(
-      conversationId: conversationId,
-      message: localData,
-    );
-
     // user has the message and assumes read
     final transferAckId = _generateAckId('T');
     message.addAck(transferAckId);
     final readAckId = _generateAckId('R');
     message.addAck(readAckId);
-    final updatedLocalData = localData.copyWith(
-      myTransferAckId: transferAckId,
-      myReadAckId: readAckId,
-    );
 
-    // save messages and acks
-    await _messageStorage.updateMessage(
+    // Stored with its ack ids from the start: markAllAsRead (run when the
+    // conversation opens) would otherwise give it a second read ack, and the
+    // message would count as read by everyone and be deleted before the
+    // other participants receive it.
+    await _messageStorage.saveDecryptedMessage(
       conversationId: conversationId,
-      message: updatedLocalData,
+      message: localData.copyWith(
+        myTransferAckId: transferAckId,
+        myReadAckId: readAckId,
+      ),
     );
 
     // sending the wrapper in firestore
@@ -354,16 +353,20 @@ class MessageService {
 
   /// Start listening to a conversation's message stream
   void startForConversation(String conversationId) {
+    _listenedConversations.add(conversationId);
     if (_subscriptions.containsKey(conversationId)) return;
 
     _log.d('BackgroundMessage', 'startForConversation: $conversationId');
     _processing[conversationId] = {};
 
     final sub = _conversationService.watchMessages(conversationId).listen((msgs) async {
+      _listenRetryDelays.remove(conversationId);
       for (final msg in msgs) {
         // Quick skip if already processed locally (includes messages we sent)
         final existing = await _messageStorage.getDecryptedMessage(conversationId: conversationId, messageId: msg.id);
         if (existing != null) continue;
+        // Content already cleared from the cloud: nothing left to decrypt
+        if (msg.ciphertext.isEmpty) continue;
 
 
         // Avoid concurrent processing
@@ -379,7 +382,16 @@ class MessageService {
         }
       }
     }, onError: (e) {
-      _log.e('BackgroundMessage', 'Stream error for $conversationId: $e');
+      // Typically permission-denied while the conversation is being created or
+      // joined, before this user is a member: the stream is closed, so start
+      // a new one later or no message would be received from then on.
+      final delay = _listenRetryDelays[conversationId] ?? const Duration(seconds: 2);
+      _log.e('BackgroundMessage', 'Stream error for $conversationId, retrying in ${delay.inSeconds}s: $e');
+      _subscriptions.remove(conversationId)?.cancel();
+      _listenRetryDelays[conversationId] = delay * 2 > const Duration(seconds: 30) ? const Duration(seconds: 30) : delay * 2;
+      Future.delayed(delay, () {
+        if (_listenedConversations.contains(conversationId)) startForConversation(conversationId);
+      });
     });
 
     _subscriptions[conversationId] = sub;
@@ -387,6 +399,8 @@ class MessageService {
 
   /// Stop listening a conversation
   Future<void> stopForConversation(String conversationId) async {
+    _listenedConversations.remove(conversationId);
+    _listenRetryDelays.remove(conversationId);
     _log.d('BackgroundMessage', 'stopForConversation: $conversationId');
     await _subscriptions[conversationId]?.cancel();
     _subscriptions.remove(conversationId);
@@ -403,6 +417,8 @@ class MessageService {
   /// Stop all listeners
   Future<void> stopAll() async {
     _log.d('BackgroundMessage', 'stopAll');
+    _listenedConversations.clear();
+    _listenRetryDelays.clear();
     for (final sub in _subscriptions.values) {
       await sub.cancel();
     }
@@ -558,6 +574,8 @@ class MessageService {
         // Quick skip if already processed locally (includes messages we sent)
         final existing = await _messageStorage.getDecryptedMessage(conversationId: conversationId, messageId: msg.id);
         if (existing != null) continue;
+        // Content already cleared from the cloud: nothing left to decrypt
+        if (msg.ciphertext.isEmpty) continue;
 
 
         // Avoid concurrent processing

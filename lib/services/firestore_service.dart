@@ -224,9 +224,18 @@ class FirestoreService {
     return _messagesRef(conversationId)
         .orderBy('serverTimestamp', descending: false)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => EncryptedMessage.fromFirestore(doc.data(), documentId: doc.id))
-            .toList());
+        .map((snapshot) {
+      // One unreadable document must not end the stream for the whole conversation
+      final messages = <EncryptedMessage>[];
+      for (final doc in snapshot.docs) {
+        try {
+          messages.add(EncryptedMessage.fromFirestore(doc.data(), documentId: doc.id));
+        } catch (e) {
+          _log.e('Conversation', 'Skipping unreadable message ${doc.id}: $e');
+        }
+      }
+      return messages;
+    });
   }
 
   /// Adds an anonymous acknowledgment to a message
@@ -250,8 +259,11 @@ class FirestoreService {
         ackSet.add(ackId);
       }
 
-      // Check if all participants have acknowledged (ack count >= participant count)
-      final allAcked = ackSet.length >= conversation!.peerIds.length;
+      // Every participant downloaded it, sender included: one transfer ack
+      // (T) each. Read acks (R) must not count, or the sender's own two acks
+      // would clear it before the second recipient of a group downloads it.
+      final transferAcks = ackSet.where((ack) => ack.startsWith('T')).length;
+      final allAcked = transferAcks >= conversation!.peerIds.length;
 
       if (allAcked) {
         // Delete encrypted content (keep metadata for status)

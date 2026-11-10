@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:logger/logger.dart';
 import 'package:onetime/config/app_config.dart';
 
@@ -12,6 +13,8 @@ class AppLogger {
 
   AppLogger._internal()
       : _logger = Logger(
+          // Debug and profile builds (testbench timings); nothing in release
+          filter: kReleaseMode ? DevelopmentFilter() : ProductionFilter(),
           printer: PrettyPrinter(
             methodCount: 0,
             lineLength: 70,
