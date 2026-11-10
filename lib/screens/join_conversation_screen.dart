@@ -6,6 +6,7 @@ import 'key_exchange_screen.dart';
 import '../services/app_logger.dart';
 import '../services/auth_service.dart';
 import '../widgets/nav_drawer.dart';
+import '../services/test_events.dart';
 
 /// Screen to join an existing conversation via QR code.
 /// The participant scans the QR code displayed by the creator.
@@ -61,6 +62,7 @@ class _JoinConversationScreenState extends State<JoinConversationScreen> {
         });
       }
 
+      TestEvents.emit('conversation_joined', {'conversationId': conversationId});
       setState(() => _isJoining = false);
 
     } catch (e) {

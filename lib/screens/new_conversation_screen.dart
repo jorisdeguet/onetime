@@ -9,6 +9,7 @@ import '../services/app_logger.dart';
 import '../services/firestore_service.dart';
 import '../services/auth_service.dart';
 import '../widgets/nav_drawer.dart';
+import '../services/test_events.dart';
 
 /// Screen for creating a new conversation.
 /// 1. Creates a conversation in Firestore
@@ -65,6 +66,7 @@ class _NewConversationScreenState extends State<NewConversationScreen> {
         _conversationId = conversation.id;
         _isCreating = false;
       });
+      TestEvents.emit('conversation_created', {'conversationId': conversation.id});
 
       // Initialize background service and start listening to this conversation
       try {

@@ -17,6 +17,7 @@ import 'package:onetime/services/auth_service.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import '../services/test_events.dart';
 
 /// Key exchange screen via QR codes.
 class KeyExchangeScreen extends StatefulWidget {
@@ -403,6 +404,7 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
       _log.d('KeyExchange', 'Reader: Saving shared key locally for conversation ${conversation.id}');
       await _keyService.saveKey(conversation.id, finalKey);
       _log.i('KeyExchange', 'Reader: Shared key saved successfully');
+      TestEvents.emit('key_saved', {'role': 'reader', 'conversationId': conversation.id, 'bytes': finalKey.lengthInBytes, 'fingerprint': TestEvents.keyFingerprint(finalKey.keyData)});
       // Update Firestore keyDebugInfo immediately with the new key size
       _log.d('KeyExchange', 'Reader: Updating Firestore keyDebugInfo');
       await _messageService.updateKeyDebugInfo(conversation.id);
@@ -822,6 +824,7 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
       _log.d('KeyExchange', 'Saving shared key locally for conversation $conversationId');
       await _keyService.saveKey(conversationId, finalKey);
       _log.i('KeyExchange', 'Shared key saved successfully');
+      TestEvents.emit('key_saved', {'role': 'source', 'conversationId': conversationId, 'bytes': finalKey.lengthInBytes, 'fingerprint': TestEvents.keyFingerprint(finalKey.keyData)});
 
       // Update Firestore keyDebugInfo immediately with the new key size
       _log.d('KeyExchange', 'Source: Updating Firestore keyDebugInfo');

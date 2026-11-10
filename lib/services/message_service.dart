@@ -21,6 +21,7 @@ import 'package:onetime/services/auth_service.dart';
 import 'package:onetime/services/pseudo_service.dart';
 
 import '../models/firestore/fs_conversation.dart';
+import 'test_events.dart';
 
 /// Background service that listens to Firestore and performs
 /// centralized message decryption. It saves results locally via
@@ -230,6 +231,7 @@ class MessageService {
             isCompressed: result.message.isCompressed,
           ),
         );
+        TestEvents.emit('message_sent', {'conversationId': conversationID, 'messageId': result.message.id, 'text': text});
       },
     );
   }
@@ -469,7 +471,7 @@ class MessageService {
             keySegmentEnd: keySegmentEndByte,
           ),
         );
-
+        TestEvents.emit('message_decrypted', {'conversationId': conversationId, 'messageId': msg.id, 'text': textContent});
         if (isPseudoMessage(textContent)) {
           _pseudoService.setPseudo(idFromPseudoMessage(textContent), pseudoFromPseudoMessage(textContent));
         }
