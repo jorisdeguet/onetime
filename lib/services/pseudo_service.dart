@@ -18,6 +18,12 @@ import 'app_logger.dart';
 class PseudoService {
   static const String _fileName = 'pseudos.json';
 
+  // One instance for the whole app, so every screen shares the cache and
+  // hears about pseudos learnt from incoming messages
+  static final PseudoService _instance = PseudoService._();
+  factory PseudoService() => _instance;
+  PseudoService._();
+
   final _pseudoUpdateController = StreamController<String>.broadcast();
   Stream<String> get pseudoUpdates => _pseudoUpdateController.stream;
 

@@ -14,6 +14,7 @@ import 'package:onetime/services/firestore_service.dart';
 import 'package:onetime/services/media_service.dart';
 import 'package:onetime/services/auth_service.dart';
 import 'package:onetime/services/pseudo_service.dart';
+import 'package:onetime/services/key_service.dart';
 
 import '../services/app_logger.dart';
 import '../models/firestore/fs_conversation.dart';
@@ -99,7 +100,6 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
   final _scrollController = ScrollController();
 
   bool _isLoading = false;
-  bool _hasSentPseudo = false;
   bool _showScrollToBottom = false;
   // Cache des pseudos pour affichage
   Map<String, String> _displayNames = {};
@@ -116,12 +116,8 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
       // _loadSharedKey();
     });
 
-    // Listen for pseudo updates
-    _pseudoSubscription = _pseudoService.pseudoUpdates.listen((conversationId) {
-      if (conversationId == widget.conversation.id) {
-        _loadDisplayNames();
-      }
-    });
+    // A pseudo belongs to a person, not a conversation: reload on any update
+    _pseudoSubscription = _pseudoService.pseudoUpdates.listen((_) => _loadDisplayNames());
     _messageService.markAllAsRead(widget.conversation.id);
     _scrollController.addListener(_onScroll);
   }
@@ -148,23 +144,18 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
     }
   }
 
-  /// Check if user has already sent their pseudo in this conversation
+  /// Introduces the user (pseudo message) the first time they open a
+  /// conversation that has a key, without asking.
   Future<void> _checkIfPseudoSent() async {
     final messages = await _messageService.getConversationMessages(widget.conversation.id);
 
     // Check if any message from current user is a pseudo message
     for (final msg in messages) {
       if (msg.senderId == _currentUserId && msg.textContent != null) {
-        if (MessageService.isPseudoMessage(msg.textContent!)) {
-          if (mounted) {
-            setState(() {
-              _hasSentPseudo = true;
-            });
-          }
-          return;
-        }
+        if (MessageService.isPseudoMessage(msg.textContent!)) return;
       }
     }
+    if (await KeyService().hasKey(widget.conversation.id)) await _sendMyPseudo();
   }
 
   Future<void> _loadDisplayNames() async {
@@ -258,15 +249,6 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
       }
 
       await _messageService.sendPseudoMessage(widget.conversation.id);
-
-
-
-      // Update state to show message input
-      if (mounted) {
-        setState(() {
-          _hasSentPseudo = true;
-        });
-      }
 
       _log.i('ConversationDetail', 'Pseudo message sent successfully');
     } catch (e, stackTrace) {
@@ -652,44 +634,7 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
                 ),
               ),
 
-              // Barre de saisie ou bouton pseudo
-              if (!_hasSentPseudo)
-              // Show "Send my pseudo" button
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).scaffoldBackgroundColor,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withAlpha(20),
-                        blurRadius: 4,
-                        offset: const Offset(0, -2),
-                      ),
-                    ],
-                  ),
-                  child: SafeArea(
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: _isLoading ? null : _sendMyPseudo,
-                        icon: _isLoading
-                            ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                            : const Icon(Icons.person_add),
-                        label: const Text('👋 Envoyer mon pseudo'),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.all(16),
-                          backgroundColor: Theme.of(context).primaryColor,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                )
-              else
+              // Barre de saisie
               // Show message input
                 Container(
                   padding: const EdgeInsets.all(8),

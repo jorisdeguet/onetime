@@ -5,7 +5,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:onetime/services/message_service.dart';
 import 'package:onetime/models/firestore/fs_conversation.dart';
 import 'package:onetime/models/firestore/fs_kex.dart';
-import 'package:onetime/screens/key_exchange_summary_screen.dart';
+import 'package:onetime/screens/conversation_detail_screen.dart';
 import 'package:onetime/services/key_exchange_sync_service.dart';
 import 'package:onetime/services/key_pre_generation_service.dart';
 import 'package:onetime/services/key_service.dart';
@@ -228,7 +228,7 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
       return;
     }
     await _restoreBrightness();
-    _openSummary(result.syncState, finalKey, conversation);
+    _openConversation(conversation, result.newKey);
   }
 
   Future<void> _finalizeAsReader(KexResult result) async {
@@ -244,22 +244,24 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
     TestEvents.emit('key_saved', {'role': 'reader', 'conversationId': conversation.id, 'bytes': finalKey.lengthInBytes, 'fingerprint': TestEvents.keyFingerprint(finalKey.keyData)});
     await _messageService.updateKeyDebugInfo(conversation.id);
     // NE PAS supprimer la session - c'est la source qui s'en charge
-    _openSummary(result.syncState, finalKey, conversation);
+    _openConversation(conversation, result.newKey);
   }
 
-  void _openSummary(FsKex syncState, SharedKey finalKey, Conversation conversation) {
+  /// Goes straight to the conversation, which introduces the user (pseudo
+  /// message) after the first key.
+  void _openConversation(Conversation conversation, SharedKey newKey) {
     if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(
-        builder: (_) => KeyExchangeSummaryScreen(
-          session: syncState,
-          newKey: finalKey,
-          conversation: conversation,
-          currentUserId: _currentUserId,
-        ),
-      ),
+      MaterialPageRoute(builder: (_) => ConversationDetailScreen(conversation: conversation)),
     );
+    messenger.showSnackBar(SnackBar(content: Text('Clé partagée: ${_formatBytes(newKey.lengthInBytes)}')));
+  }
+
+  static String _formatBytes(int bytes) {
+    if (bytes >= 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} Mo';
+    return '${(bytes / 1024).round()} Ko';
   }
 
   Widget _buildKeyGenButton(String label, int sizeInBits) {

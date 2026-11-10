@@ -74,15 +74,9 @@ echo "      key exchange: ${kex_secs}s, source ${src_bytes} B, reader ${rdr_byte
 pass "both phones hold identical key bytes ($src_fp)"
 [ "$src_bytes" = "$want_bytes" ] || fail "key is $src_bytes bytes, expected $want_bytes"
 pass "full requested key size kept ($want_bytes B)"
+# Both phones open the conversation and introduce themselves without any tap
 for s in "$SRC" "$RDR"; do
-  "$OT" wait "$s" "Vers la conversation" 30 >/dev/null || fail "$s has no 'Vers la conversation'"
-  "$OT" tap "$s" "Vers la conversation" >/dev/null
-done
-sleep 3
-# The message field only appears once each user has sent their pseudo (itself an encrypted message)
-for s in "$SRC" "$RDR"; do
-  "$OT" tap "$s" "Envoyer mon pseudo" >/dev/null || fail "$s has no 'Envoyer mon pseudo' button"
-  wait_event "$s" message_sent "" 30 || fail "$s did not send its pseudo"
+  wait_event "$s" message_sent "" 30 || fail "$s did not send its pseudo automatically"
 done
 wait_event "$RDR" message_decrypted "" 60 || fail "reader did not decrypt the source's pseudo"
 wait_event "$SRC" message_decrypted "" 60 || fail "source did not decrypt the reader's pseudo"

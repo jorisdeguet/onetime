@@ -338,11 +338,7 @@ class _ConversationTileState extends State<_ConversationTile> {
     _startListeningToMessages();
     
     // Listen for pseudo updates
-    _pseudoSubscription = _convPseudoService.pseudoUpdates.listen((conversationId) {
-      if (conversationId == widget.conversation.id) {
-        _loadDisplayName();
-      }
-    });
+    _pseudoSubscription = _convPseudoService.pseudoUpdates.listen((_) => _loadDisplayName());
   }
 
   @override
