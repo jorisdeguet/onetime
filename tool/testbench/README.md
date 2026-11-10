@@ -31,7 +31,7 @@ Events: `conversation_created`, `conversation_joined`, `key_saved`, `message_sen
 
 ## Baseline (Nov 2026, REVVL 2 source → Pixel 3 reader, QR torrent mode)
 
-| Key | Exchange time |
-|---|---|
-| 8 KB | 15–16 s |
-| 32 KB | 34 s (~1 KB/s) |
+| Key | Before Phase 1 | After Phase 1 (rotation fix) |
+|---|---|---|
+| 8 KB | 15–16 s | 13 s |
+| 32 KB | 34 s | 27 s (~1.2 KB/s) |

@@ -9,7 +9,8 @@ import '../models/local/shared_key.dart';
 class KeyService {
   static const int segmentSizeBytes = 1024;
 
-  final _keyStorage = KeyStorage.instance;
+  // Lazy so the exchange logic can run in tests without Firebase
+  late final _keyStorage = KeyStorage.instance;
 
   KeyService();
 

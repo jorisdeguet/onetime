@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'app_logger.dart';
+import 'key_transfer/kex_sync_channel.dart';
 import '../models/firestore/fs_kex.dart';
 
 /// Service to synchronize key exchange sessions via Firestore.
@@ -10,7 +11,7 @@ import '../models/firestore/fs_kex.dart';
 /// - Notify when a participant has scanned a segment
 /// - Listen to session changes in real time
 /// - Move to next segment when all have scanned
-class KeyExchangeSyncService {
+class KeyExchangeSyncService implements KexSyncChannel {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final _log = AppLogger();
 
@@ -19,6 +20,7 @@ class KeyExchangeSyncService {
       _firestore.collection('kex');
 
   /// Crée une nouvelle session d'échange de clé dans Firestore
+  @override
   Future<FsKex> createSession({
     required String sourceId,
     required List<String> participants,
@@ -45,6 +47,7 @@ class KeyExchangeSyncService {
   }
 
   /// Récupère une session par ID
+  @override
   Future<FsKex?> getSession(String sessionId) async {
     final doc = await _sessionsRef.doc(sessionId).get();
     if (!doc.exists) return null;
@@ -52,6 +55,7 @@ class KeyExchangeSyncService {
   }
 
   /// Écoute les changements d'une session en temps réel
+  @override
   Stream<FsKex?> watchSession(String sessionId) {
     return _sessionsRef.doc(sessionId).snapshots().map((snapshot) {
       if (!snapshot.exists) return null;
@@ -60,6 +64,7 @@ class KeyExchangeSyncService {
   }
 
   /// Notifie que le participant courant a scanné un segment
+  @override
   Future<void> markSegmentScanned({
     required String sessionId,
     required String participantId,
@@ -98,6 +103,7 @@ class KeyExchangeSyncService {
   }
 
   /// Marque la session comme terminée
+  @override
   Future<void> completeSession(String sessionId) async {
     await _sessionsRef.doc(sessionId).update({
       'status': KeyExchangeStatus.completed.name,
@@ -106,6 +112,7 @@ class KeyExchangeSyncService {
   }
 
   /// Met à jour le conversationId de la session
+  @override
   Future<void> setConversationId(String sessionId, String conversationId) async {
     _log.d('KeyExchange', 'setConversationId: sessionId=$sessionId, conversationId=$conversationId');
     await _sessionsRef.doc(sessionId).update({
@@ -115,6 +122,7 @@ class KeyExchangeSyncService {
   }
 
   /// Met à jour le nombre total de segments (utilisé lors d'une terminaison anticipée)
+  @override
   Future<void> updateTotalSegments(String sessionId, int totalSegments, int totalKeyBytes) async {
     _log.d('KeyExchange', 'updateTotalSegments: sessionId=$sessionId, totalSegments=$totalSegments, totalKeyBytes=$totalKeyBytes');
     await _sessionsRef.doc(sessionId).update({
@@ -133,6 +141,7 @@ class KeyExchangeSyncService {
   }
 
   /// Supprime une session (nettoyage)
+  @override
   Future<void> deleteSession(String sessionId) async {
     await _sessionsRef.doc(sessionId).delete();
   }
