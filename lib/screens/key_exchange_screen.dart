@@ -1185,9 +1185,10 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
     _log.d('TERMINATE', '');
     _log.d('TERMINATE', 'Analyzing consecutive complete segments from 0...');
 
-    // Trouver le dernier segment scanné par tous (segments consécutifs depuis 0)
+    // Trouver le dernier segment scanné par tous (segments consécutifs depuis 0).
+    // Scan every generated segment: in torrent mode the displayed one is arbitrary.
     int lastCompleteSegment = -1;
-    for (int i = 0; i <= displayedSegmentIdx; i++) {
+    for (int i = 0; i < _session!.currentSegmentIndex; i++) {
       final scannedList = _firestoreSession!.scannedBy[i] ?? [];
       final otherParticipants = _firestoreSession!.otherParticipants;
 
