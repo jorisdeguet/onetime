@@ -10,7 +10,7 @@ import 'package:flutter/foundation.dart';
 /// Nothing is emitted in release builds.
 class TestEvents {
   static void emit(String event, [Map<String, Object?> data = const {}]) {
-    if (!kDebugMode) return;
+    if (kReleaseMode) return;
     debugPrint('OT_TEST ${jsonEncode({'event': event, 't': DateTime.now().toIso8601String(), ...data})}');
   }
 

@@ -17,7 +17,7 @@ class QrPayload {
     for (int version = 1; version <= 40; version++) {
       final qr = QrCode(version, errorCorrectLevel)..addAlphaNumeric(payload);
       try {
-        QrImage(qr);
+        QrImage.withMaskPattern(qr, 0);
       } on InputTooLongException {
         continue;
       }

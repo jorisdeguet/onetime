@@ -17,6 +17,8 @@ import 'package:onetime/services/firestore_service.dart';
 import 'package:onetime/services/auth_service.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:onetime/services/key_transfer/qr_payload.dart';
+import 'package:onetime/widgets/qr_matrix_view.dart';
+import 'package:qr/qr.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../services/test_events.dart';
@@ -49,6 +51,13 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
 
   KexSourceController? _source;
   KexReaderController? _reader;
+  String? _qrPayload;
+  QrCode? _qr;
+  // Every frame is decoded: the source changes code several times per second
+  final _scannerController = MobileScannerController(
+    detectionSpeed: DetectionSpeed.unrestricted,
+    formats: const [BarcodeFormat.qrCode],
+  );
   KeyExchangeRole _role = KeyExchangeRole.source;
   int _currentStep = 0;
   String? _errorMessage;
@@ -68,6 +77,7 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
 
   @override
   void dispose() {
+    _scannerController.dispose();
     _source?.dispose();
     _reader?.dispose();
     _restoreBrightness();
@@ -362,22 +372,29 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
     );
   }
 
+  /// QR code of the payload on display, rebuilt only when the payload changes.
+  QrCode _qrFor(String payload) {
+    if (payload != _qrPayload) {
+      _qrPayload = payload;
+      _qr = QrPayload.build(payload);
+    }
+    return _qr!;
+  }
+
   Widget _buildSourceView() {
     final source = _source;
-    if (source == null || source.currentSegment == null) {
+    if (source == null || source.currentPacket == null) {
       return const Center(child: CircularProgressIndicator());
     }
 
     final session = source.session!;
     final firestoreSession = source.syncState;
-    final progress = (session.currentSegmentIndex / session.totalSegments);
-
-    // L'index du segment actuellement affiché dans le QR code
-    final displayedSegmentIdx = source.currentSegment!.segmentIndex;
-
-    // Nombre de participants ayant scanné ce segment
-    final scannedList = firestoreSession?.scannedBy[displayedSegmentIdx] ?? [];
-    final allScanned = firestoreSession?.allParticipantsScannedSegment(displayedSegmentIdx) ?? false;
+    // Segments held by the slowest reader (readers acknowledge whole blocks)
+    final readers = firestoreSession?.otherParticipants ?? const <String>[];
+    final receivedByAll = readers.isEmpty
+        ? 0
+        : readers.map((p) => firestoreSession!.getParticipantProgress(p)).reduce((a, b) => a < b ? a : b);
+    final progress = receivedByAll / session.totalSegments;
 
     return Column(
       children: [
@@ -397,7 +414,7 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
                     children: [
                       // List of participants who scanned current segment
                       Text(
-                        'Participants: ${scannedList.isEmpty ? "Personne" : scannedList.join(", ")}', // Show names/IDs
+                        'Reçu par tous: $receivedByAll/${session.totalSegments}',
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
@@ -416,7 +433,7 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            '${displayedSegmentIdx + 1}/${session.totalSegments}',
+                            source.currentLabel,
                             style: const TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
@@ -462,11 +479,11 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
                             margin: const EdgeInsets.only(bottom: 12),
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                             decoration: BoxDecoration(
-                              color: allScanned ? Colors.green : Colors.blue,
+                              color: Colors.blue,
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
-                              '${displayedSegmentIdx + 1}/${session.totalSegments}',
+                              source.currentLabel,
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
@@ -476,18 +493,7 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
                           ),
                           // QR Code
                           Expanded(
-                            child: QrImageView.withQr(
-                              qr: QrPayload.build(source.currentPayload!),
-                              backgroundColor: Colors.white,
-                              eyeStyle: const QrEyeStyle(
-                                eyeShape: QrEyeShape.square,
-                                color: Colors.black,
-                              ),
-                              dataModuleStyle: const QrDataModuleStyle(
-                                dataModuleShape: QrDataModuleShape.square,
-                                color: Colors.black,
-                              ),
-                            ),
+                            child: QrMatrixView(qr: _qrFor(source.currentPayload!)),
                           ),
                         ],
                       ),
@@ -614,10 +620,10 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
               ? Stack(
                   children: [
                     MobileScanner(
+                      controller: _scannerController,
                       onDetect: (capture) {
-                        final barcodes = capture.barcodes;
-                        if (barcodes.isNotEmpty && barcodes.first.rawValue != null) {
-                          reader.onPayload(barcodes.first.rawValue!);
+                        for (final barcode in capture.barcodes) {
+                          if (barcode.rawValue != null) reader.onPayload(barcode.rawValue!);
                         }
                       },
                     ),

@@ -19,7 +19,7 @@ set -euo pipefail
 ADB="${ADB:-$HOME/Library/Android/sdk/platform-tools/adb}"
 PKG="org.deguet.jo.onetime"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-APK="$ROOT/build/app/outputs/flutter-apk/app-debug.apk"
+APK="${OT_APK:-$ROOT/build/app/outputs/flutter-apk/app-debug.apk}"
 OT_OUT="${OT_OUT:-$ROOT/build/testbench}"
 mkdir -p "$OT_OUT"
 dump_ui() {
