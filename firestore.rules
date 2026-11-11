@@ -95,6 +95,8 @@ service cloud.firestore {
 
       // ==================== MESSAGES ====================
       // Document id is "<startByte>-<endByte>": the key range used by the one-time pad.
+      // The range is 32 MAC key bytes + the pad; the ciphertext is the padded
+      // payload + a 16-byte tag, so it is 16 bytes shorter than the range.
       match /messages/{messageId} {
         function lockHolder() {
           return get(/databases/$(database)/documents/conversations/$(conversationId)/locks/conversation_lock)
@@ -115,7 +117,7 @@ service cloud.firestore {
                       && messageId.matches('^[0-9]+-[0-9]+$')
                       && request.resource.data.keys().hasOnly(['ciphertext', 'ackSet', 'serverTimestamp'])
                       && request.resource.data.ciphertext is bytes
-                      && request.resource.data.ciphertext.size() == keyRangeLength()
+                      && request.resource.data.ciphertext.size() == keyRangeLength() - 16
                       && request.resource.data.serverTimestamp == request.time;
 
         // Acknowledgements only grow; the ciphertext can only be cleared once everyone has it.

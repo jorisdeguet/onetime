@@ -551,6 +551,10 @@ class MessageService {
       await updateKeyDebugInfo(conversationId);
       _log.i('BackgroundMessage', 'Message ${msg.id} processed and stored locally');
     } catch (e, st) {
+      if (e is MessageAuthenticationException) {
+        // Modified or forged on the way: dropped, and its key bytes stay unused
+        TestEvents.emit('message_rejected', {'conversationId': conversationId, 'messageId': msg.id});
+      }
       _log.e('BackgroundMessage', 'Error decrypting message ${msg.id}: $e');
       _log.e('BackgroundMessage', 'Stack: $st');
       rethrow;

@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
@@ -28,6 +28,7 @@ class LocalStorageService {
 
   final _log = AppLogger();
   Directory? _baseDir;
+  static const _storageChannel = MethodChannel('onetime/storage');
 
   /// Initializes service and returns base directory
   Future<Directory> _getBaseDir() async {
@@ -38,6 +39,12 @@ class LocalStorageService {
 
     if (!await _baseDir!.exists()) {
       await _baseDir!.create(recursive: true);
+    }
+    // iOS backs up Documents to iCloud: the keys and decrypted messages would
+    // then sit next to the ciphertexts on a server (Android: allowBackup=false).
+    // A failure stops here rather than store keys that may be backed up.
+    if (Platform.isIOS) {
+      await _storageChannel.invokeMethod('excludeFromBackup', _baseDir!.path);
     }
 
     return _baseDir!;

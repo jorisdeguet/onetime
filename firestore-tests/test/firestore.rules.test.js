@@ -101,45 +101,48 @@ describe('Firestore security rules', function () {
     beforeEach(() => conv('c1', [ALICE, BOB]));
 
     it('hides messages from outsiders', async () => {
-      await seed((f) => f.doc('conversations/c1/messages/0-4').set(message()));
-      await assertFails(db(EVE).doc('conversations/c1/messages/0-4').get());
+      await seed((f) => f.doc('conversations/c1/messages/0-20').set(message()));
+      await assertFails(db(EVE).doc('conversations/c1/messages/0-20').get());
       await assertFails(db(EVE).collection('conversations/c1/messages').get());
       await assertSucceeds(db(BOB).collection('conversations/c1/messages').get());
     });
 
     it('requires holding the send lock', async () => {
-      await assertFails(db(ALICE).doc('conversations/c1/messages/0-4').set(message()));
+      await assertFails(db(ALICE).doc('conversations/c1/messages/0-20').set(message()));
       await lock('c1', BOB);
-      await assertFails(db(ALICE).doc('conversations/c1/messages/0-4').set(message()));
+      await assertFails(db(ALICE).doc('conversations/c1/messages/0-20').set(message()));
       await lock('c1', ALICE);
-      await assertSucceeds(db(ALICE).doc('conversations/c1/messages/0-4').set(message()));
+      await assertSucceeds(db(ALICE).doc('conversations/c1/messages/0-20').set(message()));
     });
 
     it('refuses an outsider even if they somehow hold the lock', async () => {
       await lock('c1', EVE);
-      await assertFails(db(EVE).doc('conversations/c1/messages/0-4').set(message()));
+      await assertFails(db(EVE).doc('conversations/c1/messages/0-20').set(message()));
     });
 
     it('requires the ciphertext length to match the key range in the id', async () => {
       await lock('c1', ALICE);
-      await assertFails(db(ALICE).doc('conversations/c1/messages/0-4').set(message(5)));
+      await assertFails(db(ALICE).doc('conversations/c1/messages/0-20').set(message(5)));
+      // Range = 32 MAC key bytes + pad, ciphertext = pad + 16-byte tag: an
+      // untagged ciphertext filling the whole range is refused
+      await assertFails(db(ALICE).doc('conversations/c1/messages/0-20').set(message(20)));
       await assertFails(db(ALICE).doc('conversations/c1/messages/abc').set(message()));
     });
 
     it('never accepts a second ciphertext for the same key range', async () => {
       await lock('c1', ALICE);
-      await assertSucceeds(db(ALICE).doc('conversations/c1/messages/0-4').set(message()));
-      await assertFails(db(ALICE).doc('conversations/c1/messages/0-4').set(message()));
-      await assertFails(db(BOB).doc('conversations/c1/messages/0-4').update({ ciphertext: Blob.fromUint8Array(new Uint8Array([1, 2, 3, 4])) }));
+      await assertSucceeds(db(ALICE).doc('conversations/c1/messages/0-20').set(message()));
+      await assertFails(db(ALICE).doc('conversations/c1/messages/0-20').set(message()));
+      await assertFails(db(BOB).doc('conversations/c1/messages/0-20').update({ ciphertext: Blob.fromUint8Array(new Uint8Array([1, 2, 3, 4])) }));
     });
 
     it('lets members add acks and clear the ciphertext, but not remove acks', async () => {
-      await seed((f) => f.doc('conversations/c1/messages/0-4').set(message()));
-      const ref = db(BOB).doc('conversations/c1/messages/0-4');
+      await seed((f) => f.doc('conversations/c1/messages/0-20').set(message()));
+      const ref = db(BOB).doc('conversations/c1/messages/0-20');
       await assertSucceeds(ref.update({ ackSet: ['Tx', 'Rx', 'Ty'] }));
       await assertFails(ref.update({ ackSet: ['Ty'] }));
       await assertSucceeds(ref.update({ ackSet: ['Tx', 'Rx', 'Ty'], ciphertext: '' }));
-      await assertFails(db(EVE).doc('conversations/c1/messages/0-4').update({ ackSet: ['Tx', 'Rx', 'Ty', 'Te'] }));
+      await assertFails(db(EVE).doc('conversations/c1/messages/0-20').update({ ackSet: ['Tx', 'Rx', 'Ty', 'Te'] }));
     });
   });
 

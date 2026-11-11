@@ -1,8 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- No backup of any kind: the key files would otherwise be copied to
+         Google Drive, next to the ciphertexts stored in Firestore -->
     <application
         android:label="onetime"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules">
         <activity
             android:name="org.deguet.jo.onetime.MainActivity"
             android:exported="true"
