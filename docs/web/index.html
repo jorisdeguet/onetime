@@ -1,0 +1,372 @@
+<title>1 time, sécurité</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..900&family=IBM+Plex+Sans:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one reading column; each question is an attack (red mark), its answer the defense, and a bench where the reader runs it */
+:root {
+  --paper: #ffffff;
+  --ink: #0a0a0a;
+  --muted: #5c5c5c;
+  --rule: #d6d6d6;
+  --bench: #f3f3f3;
+  --attack: #b3261e;
+  --bezel: #2a2a2a;
+  --display: "Archivo", "Arial Narrow", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #000000; --ink: #f2f2f2; --muted: #a6a6a6; --rule: #2e2e2e; --bench: #111111; --attack: #f2b8b5; --bezel: #3a3a3a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #000000; --ink: #f2f2f2; --muted: #a6a6a6; --rule: #2e2e2e; --bench: #111111; --attack: #f2b8b5; --bezel: #3a3a3a;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--paper); color: var(--ink);
+  font: 400 1.0625rem/1.6 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+main { max-width: 44rem; margin: 0 auto; padding-block: 3rem 5rem; display: grid; gap: 4rem; }
+h1, h2 { font-family: var(--display); text-wrap: balance; margin: 0; }
+p { margin: 0; }
+.mono { font-family: var(--mono); }
+
+.hero { display: grid; gap: 1.4rem; }
+.mark { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem .7rem; font-family: var(--display); }
+.mark b { font-size: clamp(3.2rem, 11vw, 5.5rem); font-weight: 900; font-stretch: 125%; letter-spacing: -.03em; line-height: .9; }
+.mark span { font-size: .95rem; font-weight: 600; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+.hero h1 { font-size: clamp(1.6rem, 5vw, 2.25rem); font-weight: 700; font-stretch: 85%; line-height: 1.15; }
+
+/* Letter strips */
+.strip { display: grid; gap: .35rem; overflow-x: auto; }
+.row { display: grid; grid-template-columns: 5rem 1fr; align-items: center; gap: .75rem; }
+.lab { font: 600 .72rem/1.2 var(--body); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.cells { display: flex; gap: 3px; }
+.cell { width: 2.2rem; height: 2.2rem; display: grid; place-items: center; font: 600 1rem var(--mono); border: 1px solid var(--rule); flex: none; }
+.plain .cell { border-color: var(--ink); }
+.key .cell { color: var(--muted); font-size: .8rem; }
+.out .cell { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.bad .cell, .cell.bad { border-color: var(--attack); color: var(--attack); background: transparent; }
+
+/* The noise callout: a TV with no signal */
+.noise { display: grid; grid-template-columns: minmax(0, 15rem) 1fr; gap: 1.5rem; align-items: center; border-block: 2px solid var(--ink); padding-block: 1.5rem; }
+.tv { background: var(--bezel); padding: .9rem .9rem 1.6rem; border-radius: 1.1rem; position: relative; max-width: 100%; }
+.tv::after { content: ""; position: absolute; bottom: .55rem; right: 1.1rem; width: .5rem; height: .5rem; border-radius: 50%; background: #b3261e; }
+.tv canvas { display: block; width: 100%; aspect-ratio: 4 / 3; border-radius: .8rem / 1rem; image-rendering: pixelated; background: #777; }
+.tv .scan { position: absolute; inset: .9rem .9rem 1.6rem; border-radius: .8rem / 1rem; pointer-events: none;
+  background: repeating-linear-gradient(to bottom, rgba(0,0,0,.18) 0 1px, transparent 1px 3px); }
+.noise blockquote { margin: 0; font: 800 clamp(1.4rem, 4.4vw, 1.9rem)/1.15 var(--display); font-stretch: 80%; text-wrap: balance; }
+.noise p { color: var(--muted); margin-top: .6rem; }
+
+/* Questions */
+.qa { display: grid; gap: 3.5rem; }
+.q { display: grid; gap: .9rem; }
+.q h2 { font-size: clamp(1.4rem, 4.2vw, 1.85rem); font-weight: 800; font-stretch: 80%; line-height: 1.15; }
+.q h2::before { content: "?"; display: inline-block; width: 1.05em; color: var(--attack); font-stretch: 100%; }
+.answer { font: 600 1.15rem/1.45 var(--body); }
+.why { color: var(--muted); }
+.why strong { color: var(--ink); font-weight: 600; }
+.status { font: 600 .72rem/1 var(--body); text-transform: uppercase; letter-spacing: .1em; padding: .4rem .6rem; width: fit-content; }
+.status.ok { background: var(--ink); color: var(--paper); }
+.status.limit { border: 1px dashed var(--ink); }
+
+.bench { background: var(--bench); border: 1px solid var(--rule); padding: 1.1rem; display: grid; gap: .9rem; min-width: 0; }
+.cap { font: 600 .72rem/1.3 var(--body); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.controls { display: flex; flex-wrap: wrap; gap: .6rem 1rem; align-items: center; }
+.field { display: grid; gap: .3rem; }
+button, input[type=text], select { font: 600 .95rem var(--body); }
+button { background: var(--ink); color: var(--paper); border: 0; padding: .6rem 1rem; cursor: pointer; }
+input[type=text], select { font-family: var(--mono); background: var(--paper); color: var(--ink); border: 1px solid var(--ink); padding: .5rem .6rem; }
+input[type=text] { width: 100%; max-width: 16rem; text-transform: uppercase; }
+button:focus-visible, input:focus-visible, select:focus-visible, .toggle:focus-within { outline: 3px solid var(--attack); outline-offset: 2px; }
+.toggle { display: inline-flex; gap: .5rem; align-items: center; font-size: .95rem; cursor: pointer; }
+.verdict { font-weight: 700; padding: .55rem .75rem; border: 1px solid var(--ink); width: fit-content; }
+.verdict.bad { border-color: var(--attack); color: var(--attack); }
+.steps { margin: 0; padding-left: 1.2rem; display: grid; gap: .4rem; color: var(--muted); }
+.steps strong { color: var(--ink); }
+.canvases { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .8rem; }
+.canvases figure { margin: 0; display: grid; gap: .35rem; }
+.canvases canvas { width: 100%; height: auto; image-rendering: pixelated; border: 1px solid var(--rule); }
+figcaption { font-size: .8rem; color: var(--muted); }
+table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+.tablewrap { overflow-x: auto; }
+th, td { text-align: left; padding: .45rem .6rem .45rem 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font: 600 .72rem/1.2 var(--body); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--rule); padding-top: 1.25rem; display: grid; gap: .5rem; }
+
+@media (max-width: 34rem) {
+  .noise { grid-template-columns: 1fr; }
+  .tv { max-width: 17rem; }
+  .row { grid-template-columns: 1fr; gap: .25rem; }
+  .cell { width: 1.9rem; height: 1.9rem; font-size: .9rem; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<main>
+  <header class="hero">
+    <div class="mark"><b>1 time</b><span>messagerie à masque jetable</span></div>
+    <h1>Chaque message est chiffré avec une clé aussi longue que lui, échangée en personne, utilisée une seule fois.</h1>
+    <div class="strip" aria-label="Chaque lettre du message est décalée par une lettre de clé">
+      <div class="row plain"><span class="lab">Message</span><div class="cells" id="hMsg"></div></div>
+      <div class="row key"><span class="lab">Clé (décalage)</span><div class="cells" id="hKey"></div></div>
+      <div class="row out"><span class="lab">Envoyé</span><div class="cells" id="hOut"></div></div>
+    </div>
+    <p class="why">Chaque lettre est décalée d'un nombre de crans tiré au hasard. Le résultat est aussi aléatoire que la clé. C'est le masque jetable (Vernam, 1917) : le seul chiffrement dont on a prouvé qu'il est incassable (Shannon, 1949).</p>
+  </header>
+
+  <aside class="noise" aria-label="L'inverse de l'information">
+    <div class="tv"><canvas id="tv" width="120" height="90" aria-hidden="true"></canvas><div class="scan"></div></div>
+    <div>
+      <blockquote>L'inverse de l'information, c'est le bruit.</blockquote>
+      <p>Un message chiffré par 1 time ressemble à l'écran d'une télé sans signal : pas de motif, pas de répétition, rien à analyser. Ce n'est pas un code difficile à casser. Il n'y a rien dedans.</p>
+    </div>
+  </aside>
+
+  <div class="qa">
+    <section class="q" id="interception">
+      <h2>Et si quelqu'un intercepte un message ?</h2>
+      <p class="answer">Il obtient des lettres au hasard.</p>
+      <p class="why">Toute phrase de même longueur correspond à une clé possible. <strong>Il ne peut en éliminer aucune</strong>, même en essayant toutes les clés.</p>
+      <span class="status ok">Protégé · preuve mathématique</span>
+      <div class="bench">
+        <span class="cap">À vous · vous êtes l'espion</span>
+        <div class="strip">
+          <div class="row out"><span class="lab">Intercepté</span><div class="cells" id="iCipher"></div></div>
+        </div>
+        <div class="field">
+          <label class="cap" for="iGuess">Votre hypothèse</label>
+          <input type="text" id="iGuess" value="ANNULE TOUT" maxlength="11" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="strip">
+          <div class="row key"><span class="lab">Clé qui y mène</span><div class="cells" id="iKey"></div></div>
+          <div class="row plain"><span class="lab">Déchiffré</span><div class="cells" id="iPlain"></div></div>
+        </div>
+        <p class="why">Écrivez ce que vous voulez : une clé le justifie toujours. Le vrai message était <span class="mono">RDV A MIDI</span>… ou pas.</p>
+      </div>
+    </section>
+
+    <section class="q" id="serveur">
+      <h2>Et si le serveur est piraté ?</h2>
+      <p class="answer">Il ne détient que du bruit. La clé n'y est jamais passée.</p>
+      <p class="why">La clé va d'un écran à une caméra, à quelques centimètres. Le serveur voit seulement <strong>qui écrit à qui, quand, et combien de lettres</strong>.</p>
+      <span class="status ok">Contenu protégé</span>
+    </section>
+
+    <section class="q" id="modification">
+      <h2>Et si quelqu'un modifie un message en route ?</h2>
+      <p class="answer">Sans la clé, il ne peut que brouiller le message. Sauf s'il devine ce qu'il contient : c'est là que sert le sceau.</p>
+      <ol class="steps">
+        <li>Vous répondez <strong>OUI</strong> à une invitation. Le pirate s'en doute : la réponse ne peut être que OUI ou NON.</li>
+        <li>Il ne connaît pas les décalages de la clé, mais il sait qu'au premier rang un O doit devenir un N : <strong>un cran en arrière</strong>. Il recule donc d'un cran la première lettre reçue, quelle qu'elle soit. Idem pour les deux autres.</li>
+        <li>Le destinataire applique la clé et lit <strong>NON</strong>. La clé n'a jamais servi au pirate.</li>
+        <li>S'il se trompe (vous aviez dit NON), le destinataire lit des lettres sans sens.</li>
+      </ol>
+      <p class="why">Donc vous avez raison : sans deviner le contenu, il ne fait que du charabia. Mais les messages courts, les heures, les montants ou le nom de l'expéditeur (placé au début de chaque message) se devinent. <strong>Chaque message porte donc un sceau</strong>, calculé avec des lettres de clé neuves (méthode de Wegman et Carter, 1981). Toute retouche le rend faux, et la chance d'en forger un valide est de moins d'une sur 10<sup>30</sup>.</p>
+      <span class="status ok">Protégé · depuis novembre 2026</span>
+      <div class="bench">
+        <span class="cap">À vous · vous êtes sur le chemin du message</span>
+        <div class="controls">
+          <div class="field"><label class="cap" for="mReal">Message envoyé</label>
+            <select id="mReal"><option>OUI</option><option>NON</option></select></div>
+          <div class="field"><label class="cap" for="mGuess">Le pirate suppose</label>
+            <select id="mGuess"><option>OUI</option><option>NON</option></select></div>
+          <div class="field"><label class="cap" for="mWant">Il veut faire lire</label>
+            <select id="mWant"><option>NON</option><option>OUI</option><option>PEUT</option></select></div>
+        </div>
+        <div class="strip">
+          <div class="row out"><span class="lab">Envoyé</span><div class="cells" id="mSent"></div></div>
+          <div class="row key"><span class="lab">Retouche</span><div class="cells" id="mShift"></div></div>
+          <div class="row out"><span class="lab">Reçu</span><div class="cells" id="mRecv"></div></div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="mSeal"> Vérifier le sceau</label>
+        <p class="verdict" id="mVerdict" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <section class="q" id="reutilisation">
+      <h2>Et si la même clé servait deux fois ?</h2>
+      <p class="answer">Les deux messages se trahiraient l'un l'autre. L'application l'empêche.</p>
+      <p class="why">Superposés, deux messages chiffrés avec la même clé laissent apparaître les deux textes : la clé s'annule. C'est ainsi que les Américains ont lu des milliers de télégrammes soviétiques (projet VENONA). Ici, <strong>un seul téléphone écrit à la fois, le serveur refuse un second message sur une clé déjà prise, et la clé utilisée est effacée.</strong></p>
+      <span class="status ok">Protégé</span>
+      <div class="bench">
+        <div class="canvases">
+          <figure><canvas id="c1" width="96" height="48"></canvas><figcaption>Image A chiffrée</figcaption></figure>
+          <figure><canvas id="c2" width="96" height="48"></canvas><figcaption>Image B chiffrée</figcaption></figure>
+          <figure><canvas id="c3" width="96" height="48"></canvas><figcaption id="c3cap">Superposées</figcaption></figure>
+        </div>
+        <label class="toggle"><input type="checkbox" id="rSame" checked> Même clé pour les deux</label>
+      </div>
+    </section>
+
+    <section class="q" id="sauvegarde">
+      <h2>Et si mon téléphone est sauvegardé dans le cloud ?</h2>
+      <p class="answer">La clé et les messages sont exclus de toute sauvegarde.</p>
+      <p class="why">Sinon, la clé finirait chez Google ou Apple, à côté des messages chiffrés. Contrepartie voulue : <strong>en changeant de téléphone, on refait un échange de clé.</strong></p>
+      <span class="status ok">Protégé · depuis novembre 2026</span>
+    </section>
+
+    <section class="q" id="echange">
+      <h2>Et si quelqu'un filme l'échange de clé ?</h2>
+      <p class="answer">Il aurait la clé. C'est le seul moment où elle est visible.</p>
+      <p class="why">Faites l'échange en privé, écran peu lumineux, téléphones face à face. En mode Bluetooth, un seul code est affiché ; la clé passe ensuite par radio, protégée par AES-256 : très sûr, mais garanti par la difficulté d'un calcul plutôt que par une preuve.</p>
+      <span class="status limit">Limite connue · précautions</span>
+    </section>
+
+    <section class="q" id="aleatoire">
+      <h2>La clé est-elle vraiment aléatoire ?</h2>
+      <p class="answer">Elle mélange deux sources : le générateur du système et le bruit du capteur de la caméra.</p>
+      <p class="why">Le capteur d'un appareil photo produit un léger grain, même dans le noir : la neige de la télé, en quelque sorte. Aucun programme ne peut le prévoir. <strong>Les deux sources sont combinées : la clé reste imprévisible tant qu'une seule des deux l'est.</strong> Les deux passent les tests statistiques habituels :</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Test</th><th>Ce qu'il cherche</th><th>Générateur du système</th><th>Caméra (Pixel 3)</th></tr></thead>
+          <tbody id="rngTable">
+            <tr><td>Khi-deux</td><td>Des lettres plus fréquentes que d'autres</td><td class="num">p = 0,79</td><td class="num">p = 0,30</td></tr>
+            <tr><td>Fréquence des bits</td><td>Plus de 1 que de 0</td><td class="num">p = 0,20</td><td class="num">p = 0,82</td></tr>
+            <tr><td>Séquences</td><td>Des suites trop longues ou trop courtes</td><td class="num">p = 0,90</td><td class="num">p = 0,74</td></tr>
+            <tr><td>Corrélation</td><td>Une lettre qui annonce la suivante</td><td class="num">−0,0005</td><td class="num">0,001</td></tr>
+            <tr><td>Entropie</td><td>Information par lettre (max. 8 bits)</td><td class="num">7,99996</td><td class="num">7,9993</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="why">Un test est réussi quand p est entre 0,01 et 0,99. Brut, le grain de la caméra échoue : il est biaisé. On le passe donc au hachage, en ne gardant qu'un quart de son volume. Ce qui compte est mesuré avant hachage : <strong>0,87 bit d'imprévisible par pixel, pour 0,31 exigé.</strong> La caméra fournit ainsi 56 Ko d'aléa par seconde, bien plus que ce que l'échange consomme.</p>
+      <span class="status ok">Deux sources indépendantes</span>
+    </section>
+
+    <section class="q" id="quantique">
+      <h2>Et avec un ordinateur quantique ?</h2>
+      <p class="answer">Rien ne change : il n'y a aucun calcul à accélérer.</p>
+      <span class="status ok">Protégé</span>
+    </section>
+
+    <section class="q" id="intrus">
+      <h2>Et si un inconnu rejoint la conversation ?</h2>
+      <p class="answer">Il n'obtient jamais la clé, qui ne se transmet que devant vous. Il peut gêner l'échange : un correctif est prévu.</p>
+      <span class="status limit">Gêne possible · correctif prévu</span>
+    </section>
+  </div>
+
+  <footer>
+    <p>C. Shannon, <em>Communication Theory of Secrecy Systems</em>, 1949 · M. Wegman et L. Carter, <em>New hash functions and their use in authentication</em>, 1981 · NIST SP 800-22 et 800-90B (tests d'aléa).</p>
+    <p>Pour simplifier, la page décale des lettres. L'application fait la même chose avec les bits de chaque caractère. Les démonstrations tournent dans votre navigateur et ne transmettent rien.</p>
+  </footer>
+</main>
+
+<script>
+(() => {
+  const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ ';
+  const N = A.length;
+  const $ = id => document.getElementById(id);
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const rand = n => Array.from(crypto.getRandomValues(new Uint32Array(n)), v => v % N);
+  const idx = s => Array.from(s.toUpperCase(), c => Math.max(0, A.indexOf(c)));
+  const txt = a => a.map(i => A[i]);
+  const add = (a, b) => a.map((v, i) => (v + b[i]) % N);
+  const sub = (a, b) => a.map((v, i) => (v - b[i] + N) % N);
+  const show = (el, chars, cls = '') => {
+    el.replaceChildren(...chars.map(c => Object.assign(document.createElement('span'), { className: 'cell ' + cls, textContent: c === ' ' ? '·' : c })));
+  };
+  const shifts = k => k.map(v => (v ? '+' + v : '0'));
+
+  // Hero: same message, a new key every few seconds
+  const heroMsg = idx('RDV A MIDI');
+  show($('hMsg'), txt(heroMsg));
+  const heroTick = () => { const k = rand(heroMsg.length); show($('hKey'), shifts(k)); show($('hOut'), txt(add(heroMsg, k))); };
+  heroTick();
+  if (!reduce) setInterval(heroTick, 2000);
+
+  // TV with no signal
+  const tv = $('tv'), tx = tv.getContext('2d'), img = tx.createImageData(tv.width, tv.height);
+  const snow = () => {
+    const r = crypto.getRandomValues(new Uint8Array(tv.width * tv.height));
+    for (let i = 0; i < r.length; i++) { const v = r[i]; img.data[i * 4] = v; img.data[i * 4 + 1] = v; img.data[i * 4 + 2] = v; img.data[i * 4 + 3] = 255; }
+    tx.putImageData(img, 0, 0);
+  };
+  snow();
+  if (!reduce) { let last = 0; const loop = t => { if (t - last > 45) { snow(); last = t; } requestAnimationFrame(loop); }; requestAnimationFrame(loop); }
+
+  // Interception: each guess has a key that explains what was intercepted
+  const secret = idx('RDV A MIDI ');
+  const intercepted = add(secret, rand(secret.length));
+  show($('iCipher'), txt(intercepted));
+  const guess = () => {
+    const g = idx($('iGuess').value.padEnd(11, ' ').slice(0, 11));
+    const k = sub(intercepted, g);
+    show($('iKey'), shifts(k));
+    show($('iPlain'), txt(sub(intercepted, k)));
+  };
+  $('iGuess').addEventListener('input', guess);
+  guess();
+
+  // Modification: the attacker shifts the received letters by (wanted - assumed)
+  const P = 2147483647n;
+  const seal = (letters, r, s) => { let h = 0n; for (const v of letters) h = ((h + BigInt(v) + 32n) * r) % P; return (h + s) % P; };
+  let mKey, mR, mS;
+  const fresh = () => { mKey = rand(4); const [a, b] = crypto.getRandomValues(new Uint32Array(2)); mR = BigInt(a) % P; mS = BigInt(b) % P; };
+  const pad4 = s => idx(s.padEnd(4, ' '));
+  const tamper = () => {
+    const real = pad4($('mReal').value), assumed = pad4($('mGuess').value), want = pad4($('mWant').value);
+    const sent = add(real, mKey);
+    const delta = sub(want, assumed);
+    const recv = add(sent, delta);
+    show($('mSent'), txt(sent));
+    show($('mShift'), delta.map(d => (d === 0 ? '0' : (d <= N / 2 ? '+' + d : '−' + (N - d)))));
+    const read = sub(recv, mKey);
+    const changed = delta.some(d => d);
+    show($('mRecv'), txt(recv), changed ? 'bad' : '');
+    const sealOk = seal(recv, mR, mS) === seal(sent, mR, mS);
+    const v = $('mVerdict'), word = txt(read).join('').trim();
+    if ($('mSeal').checked && !sealOk) { v.textContent = 'Sceau faux : message rejeté, rien ne s\'affiche.'; v.className = 'verdict'; }
+    else if (!changed) { v.textContent = 'Le destinataire lit « ' + word + ' ».'; v.className = 'verdict'; }
+    else if (word === $('mWant').value) { v.textContent = 'Le destinataire lit « ' + word + ' ». Le pirate a réussi sans la clé.'; v.className = 'verdict bad'; }
+    else { v.textContent = 'Le destinataire lit « ' + txt(read).join('') + ' » : du charabia, le pirate a mal deviné.'; v.className = 'verdict bad'; }
+  };
+  fresh();
+  ['mReal', 'mGuess', 'mWant', 'mSeal'].forEach(id => $(id).addEventListener('change', () => { if (id === 'mReal') fresh(); tamper(); }));
+  tamper();
+
+  // Key reuse: two images, one key, then the overlay
+  const W = 96, H = 48;
+  const bitmap = text => {
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const x = c.getContext('2d');
+    x.fillStyle = '#000'; x.fillRect(0, 0, W, H);
+    x.fillStyle = '#fff'; x.font = '900 30px Archivo, Arial, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillText(text, W / 2, H / 2 + 1);
+    const d = x.getImageData(0, 0, W, H).data, out = new Uint8Array(W * H);
+    for (let i = 0; i < out.length; i++) out[i] = d[i * 4] > 127 ? 1 : 0;
+    return out;
+  };
+  const xor = (a, b) => a.map((v, i) => v ^ b[i]);
+  const colors = () => {
+    const cs = getComputedStyle(document.documentElement);
+    const rgb = h => [1, 3, 5].map(i => parseInt(h.trim().slice(i, i + 2), 16));
+    return [rgb(cs.getPropertyValue('--ink')), rgb(cs.getPropertyValue('--paper'))];
+  };
+  const paint = (id, bits) => {
+    const x = $(id).getContext('2d'), im = x.createImageData(W, H), [ink, paper] = colors();
+    for (let i = 0; i < bits.length; i++) im.data.set([...(bits[i] ? ink : paper), 255], i * 4);
+    x.putImageData(im, 0, 0);
+  };
+  const randBits = () => crypto.getRandomValues(new Uint8Array(W * H)).map(v => v & 1);
+  const reuse = () => {
+    const k1 = randBits(), k2 = $('rSame').checked ? k1 : randBits();
+    const ca = xor(bitmap('OUI'), k1), cb = xor(bitmap('NON'), k2);
+    paint('c1', ca); paint('c2', cb); paint('c3', xor(ca, cb));
+    $('c3cap').textContent = $('rSame').checked ? 'Superposées : les deux mots apparaissent' : 'Clés différentes : toujours du bruit';
+  };
+  $('rSame').addEventListener('change', reuse);
+  (document.fonts?.ready || Promise.resolve()).then(reuse);
+  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', reuse);
+})();
+</script>
