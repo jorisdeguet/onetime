@@ -1,3 +1,8 @@
+<!doctype html>
+<html lang="fr">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="1 time, messagerie à masque jetable : comment elle protège vos messages, et où la télécharger pour Android.">
 <title>1 time, sécurité</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -96,6 +101,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, .toggle:focus-w
 .canvases figure { margin: 0; display: grid; gap: .35rem; }
 .canvases canvas { width: 100%; height: auto; image-rendering: pixelated; border: 1px solid var(--rule); }
 figcaption { font-size: .8rem; color: var(--muted); }
+.get { display: inline-block; width: fit-content; background: var(--ink); color: var(--paper); font: 700 1rem var(--body); padding: .75rem 1.1rem; text-decoration: none; }
+.get:focus-visible { outline: 3px solid var(--attack); outline-offset: 2px; }
+.apk { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .3rem 1rem; margin: 0; font-size: .9rem; }
+.apk dt { color: var(--muted); }
+.apk dd { margin: 0; font-family: var(--mono); overflow-wrap: anywhere; }
+code { font-family: var(--mono); font-size: .82rem; overflow-wrap: anywhere; }
 table { border-collapse: collapse; width: 100%; font-size: .92rem; }
 .tablewrap { overflow-x: auto; }
 th, td { text-align: left; padding: .45rem .6rem .45rem 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
@@ -123,6 +134,7 @@ footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--rule
       <div class="row out"><span class="lab">Envoyé</span><div class="cells" id="hOut"></div></div>
     </div>
     <p class="why">Chaque lettre est décalée d'un nombre de crans tiré au hasard. Le résultat est aussi aléatoire que la clé. C'est le masque jetable (Vernam, 1917) : le seul chiffrement dont on a prouvé qu'il est incassable (Shannon, 1949).</p>
+    <a class="get" href="#installer">Télécharger pour Android</a>
   </header>
 
   <aside class="noise" aria-label="L'inverse de l'information">
@@ -267,6 +279,24 @@ footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--rule
       <p class="answer">Il n'obtient jamais la clé, qui ne se transmet que devant vous. Il peut gêner l'échange : un correctif est prévu.</p>
       <span class="status limit">Gêne possible · correctif prévu</span>
     </section>
+
+    <section class="q" id="installer">
+      <h2>Comment installer l'application ?</h2>
+      <p class="answer">Sur Android, téléchargez-la ici. Elle ne passe pas par le Play Store : c'est sa signature qui garantit qu'elle vient de nous.</p>
+      <a class="get" href="onetime.apk" download>Télécharger onetime.apk</a>
+      <dl class="apk" id="apkInfo" hidden>
+        <dt>Version</dt><dd id="apkVersion"></dd>
+        <dt>Taille</dt><dd id="apkSize"></dd>
+        <dt>Empreinte du fichier (SHA-256)</dt><dd id="apkSha"></dd>
+      </dl>
+      <ol class="steps">
+        <li><strong>Ouvrez le fichier téléchargé.</strong> Android demande d'autoriser votre navigateur à installer des applications : acceptez pour cette fois.</li>
+        <li><strong>Vérifiez la signature si vous le souhaitez.</strong> Le certificat de l'application a pour empreinte SHA-256 :<br><code>CE:8A:DD:82:7A:41:89:0E:0F:3C:6B:EF:79:A4:64:B9:FF:58:82:4D:74:3A:95:1B:79:E6:D2:49:DE:FF:81:D6</code></li>
+        <li><strong>Mises à jour :</strong> téléchargez la nouvelle version au même endroit. Android refuse de remplacer l'application par une version signée avec une autre clé : un faux fichier ne peut pas prendre sa place.</li>
+      </ol>
+      <p class="why">Ce site livre le fichier, mais ne peut pas le modifier sans que la signature casse. Une fois installée, l'application ne télécharge plus de code : elle chiffre sans dépendre de ce site.</p>
+      <span class="status limit">Android uniquement · iPhone à venir</span>
+    </section>
   </div>
 
   <footer>
@@ -276,6 +306,15 @@ footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--rule
 </main>
 
 <script>
+// Version, size and hash of the APK, written next to it by tool/release/publish_site.sh
+fetch('apk.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(a => {
+  if (!a) return;
+  document.getElementById('apkVersion').textContent = a.version;
+  document.getElementById('apkSize').textContent = (a.bytes / 1e6).toFixed(0).replace('.', ',') + ' Mo';
+  document.getElementById('apkSha').textContent = a.sha256;
+  document.getElementById('apkInfo').hidden = false;
+}).catch(() => {});
+
 (() => {
   const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ ';
   const N = A.length;
