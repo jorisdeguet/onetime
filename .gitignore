@@ -52,3 +52,6 @@ ios/Runner/GoogleService-Info.plist
 
 # Firestore rules tests
 firestore-tests/node_modules/
+
+# Firebase CLI deploy cache
+.firebase/
