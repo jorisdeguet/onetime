@@ -7,6 +7,8 @@ import '../app_logger.dart';
 import '../key_service.dart';
 import 'kex_source_controller.dart';
 import 'fountain.dart';
+import 'kex_bluetooth_transfer.dart';
+import 'kex_link.dart';
 import 'kex_sync_channel.dart';
 
 /// Reader side of a key exchange, without any UI.
@@ -15,8 +17,12 @@ import 'kex_sync_channel.dart';
 /// [onPayload]. Fountain packets are decoded block by block; each rebuilt
 /// block is stored and acknowledged on the [KexSyncChannel]. When the source
 /// completes the session, [result] yields the segments the source kept.
+///
+/// When the scanned code is a [KexInvite] (Bluetooth mode), the packets come
+/// encrypted over [KexDataLink] instead and the camera is no longer needed.
 class KexReaderController extends ChangeNotifier {
   final KexSyncChannel _sync;
+  final KexDataLink? _data;
   final KeyService _keyService;
   final FountainCodec _codec = const FountainCodec();
   final String localId;
@@ -32,6 +38,17 @@ class KexReaderController extends ChangeNotifier {
   FsKex? syncState;
   String? error;
 
+  /// Bluetooth mode, from the moment the invite is scanned.
+  bool usesBluetooth = false;
+  bool bluetoothConnected = false;
+  KexPacketCipher? _cipher;
+  StreamSubscription<Uint8List>? _dataSubscription;
+  Future<void> _dataQueue = Future.value();
+  int rejectedPackets = 0;
+  int _packetsSinceNotify = 0;
+  int _bluetoothPackets = 0;
+  int _highestSequence = 0;
+
   final Completer<KexResult> _result = Completer<KexResult>();
   StreamSubscription<FsKex?>? _syncSubscription;
   bool _processing = false;
@@ -42,10 +59,12 @@ class KexReaderController extends ChangeNotifier {
 
   KexReaderController({
     required KexSyncChannel sync,
+    KexDataLink? data,
     required KeyService keyService,
     required this.localId,
     required this.conversationId,
   })  : _sync = sync,
+        _data = data,
         _keyService = keyService;
 
   Future<KexResult> get result => _result.future;
@@ -62,33 +81,12 @@ class KexReaderController extends ChangeNotifier {
   /// Handles one received payload. Payloads arriving while the previous one
   /// is processed are ignored; duplicates add nothing.
   Future<void> onPayload(String payload) async {
-    if (_processing || _finalizing || _disposed) return;
+    if (_processing || _finalizing || _disposed || usesBluetooth) return;
+    final invite = _decoder == null ? KexInvite.tryDecode(payload) : null;
+    if (invite != null) return _startBluetooth(invite);
     _processing = true;
     try {
-      final packet = _codec.decode(payload);
-      // Packets describe the transfer themselves: decoding starts at once and
-      // the session is joined meanwhile, so no code is lost while joining
-      if (_decoder == null) {
-        _sessionId = packet.sessionId;
-        _decoder = FountainDecoder(FountainLayout(
-          totalBytes: packet.totalBytes,
-          symbolSize: packet.symbolSize,
-          blockSymbols: packet.blockSymbols,
-        ));
-      }
-      if (packet.sessionId != _sessionId) return;
-      if (session == null && !_joining) unawaited(_join(packet.sessionId));
-      final block = _decoder!.add(packet);
-      error = null;
-      _log.d('QR SCAN', 'Packet ${packet.block}/${packet.index} read ($segmentsRead known)');
-      if (block != null) {
-        if (session == null) {
-          _blocksAwaitingSession.add(block);
-        } else {
-          _onBlockDecoded(block);
-        }
-      }
-      _notify();
+      _onPacket(_codec.decode(payload));
     } catch (e) {
       _log.e('QR SCAN', 'Payload rejected: $e');
       error = e.toString();
@@ -96,6 +94,77 @@ class KexReaderController extends ChangeNotifier {
     } finally {
       _processing = false;
     }
+  }
+
+  /// Bluetooth mode: joins the session and receives the packets over the
+  /// link, encrypted with the invite's secret.
+  Future<void> _startBluetooth(KexInvite invite) async {
+    final data = _data;
+    if (data == null) {
+      error = 'Bluetooth non disponible sur cet appareil';
+      _notify();
+      return;
+    }
+    usesBluetooth = true;
+    _sessionId = invite.sessionId;
+    _cipher = KexPacketCipher(invite);
+    _dataSubscription = data.data.listen((message) {
+      _dataQueue = _dataQueue.then((_) => _onEncrypted(message));
+    });
+    _notify();
+    unawaited(_join(invite.sessionId));
+    try {
+      await data.connectReader(invite.sessionId);
+      bluetoothConnected = true;
+      error = null;
+    } catch (e) {
+      _log.e('KeyExchange', 'Bluetooth connection failed: $e');
+      error = 'Connexion Bluetooth impossible. Rapprochez les téléphones ou choisissez le mode QR.';
+    }
+    _notify();
+  }
+
+  Future<void> _onEncrypted(Uint8List message) async {
+    if (_finalizing || _disposed) return;
+    try {
+      final packet = _codec.decodeBytes(await _cipher!.decrypt(message));
+      // Reported by sequence number, so lost packets do not hold the source back
+      final next = KexPacketCipher.sequenceOf(message) + 1;
+      if (next > _highestSequence) _highestSequence = next;
+      if (++_bluetoothPackets % 4 == 0) _data!.reportReceived(_highestSequence);
+      _onPacket(packet);
+    } catch (e) {
+      // Lost frame or forged packet: the fountain code makes up for it
+      rejectedPackets++;
+      _log.d('KeyExchange', 'Bluetooth packet rejected: $e');
+    }
+  }
+
+  void _onPacket(FountainPacket packet) {
+    // Packets describe the transfer themselves: decoding starts at once and
+    // the session is joined meanwhile, so no code is lost while joining
+    if (_decoder == null) {
+      _sessionId = packet.sessionId;
+      _decoder = FountainDecoder(FountainLayout(
+        totalBytes: packet.totalBytes,
+        symbolSize: packet.symbolSize,
+        blockSymbols: packet.blockSymbols,
+      ));
+    }
+    if (packet.sessionId != _sessionId) return;
+    if (session == null && !_joining) unawaited(_join(packet.sessionId));
+    final block = _decoder!.add(packet);
+    error = null;
+    // Bluetooth delivers dozens of packets per second: no log line for each
+    if (!usesBluetooth) _log.d('QR SCAN', 'Packet ${packet.block}/${packet.index} read ($segmentsRead known)');
+    if (block != null) {
+      if (session == null) {
+        _blocksAwaitingSession.add(block);
+      } else {
+        _onBlockDecoded(block);
+      }
+    }
+    if (!usesBluetooth || block != null || ++_packetsSinceNotify % 8 == 0) _notify();
   }
 
   /// Asks the source to end the exchange now; every participant keeps what
@@ -232,6 +301,7 @@ class KexReaderController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _syncSubscription?.cancel();
+    _dataSubscription?.cancel();
     super.dispose();
   }
 }

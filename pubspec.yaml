@@ -75,6 +75,9 @@ dependencies:
   get_it: ^8.1.0
   path_provider: ^2.0.15
   path: ^1.9.0
+  bluetooth_low_energy: ^6.2.1
+  cryptography: ^2.9.0
+  sensors_plus: ^7.1.1
 
 dev_dependencies:
   flutter_test:
@@ -137,3 +140,8 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# Patched Bluetooth plugin (connection priority), see third_party/bluetooth_low_energy_android/ONETIME_PATCH.md
+dependency_overrides:
+  bluetooth_low_energy_android:
+    path: third_party/bluetooth_low_energy_android

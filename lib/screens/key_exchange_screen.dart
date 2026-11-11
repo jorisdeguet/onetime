@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:onetime/services/message_service.dart';
@@ -7,8 +8,11 @@ import 'package:onetime/models/firestore/fs_conversation.dart';
 import 'package:onetime/models/firestore/fs_kex.dart';
 import 'package:onetime/screens/conversation_detail_screen.dart';
 import 'package:onetime/services/key_exchange_sync_service.dart';
-import 'package:onetime/services/key_pre_generation_service.dart';
+import 'package:onetime/services/key_transfer/ble_kex_link.dart';
+import 'package:onetime/services/key_transfer/hybrid_kex_sync_channel.dart';
 import 'package:onetime/services/key_service.dart';
+import 'package:onetime/services/entropy/camera_noise.dart';
+import 'package:onetime/services/entropy/motion_noise.dart';
 import 'package:onetime/services/key_transfer/kex_reader_controller.dart';
 import 'package:onetime/services/key_transfer/kex_source_controller.dart';
 import 'package:onetime/models/local/shared_key.dart';
@@ -46,10 +50,20 @@ class KeyExchangeScreen extends StatefulWidget {
 
 class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
   final AuthService _authService = AuthService();
-  final KeyExchangeSyncService _syncService = KeyExchangeSyncService();
+  // Acknowledgements over Bluetooth when the phones reach each other, Firestore otherwise
+  late final HybridKexSyncChannel _syncService = HybridKexSyncChannel(
+    remote: KeyExchangeSyncService(),
+    localId: _currentUserId,
+    hostLink: BleKexHost.new,
+    clientLink: BleKexClient.new,
+  );
   final MessageService _messageService = MessageService.fromCurrentUserID();
   late final KeyService _keyService = KeyService();
   final _log = AppLogger();
+
+  // Testbench only: --dart-define=OT_QR_INTERVAL_MS=<ms> to measure readers
+  static const _qrIntervalOverride = int.fromEnvironment('OT_QR_INTERVAL_MS');
+  static const _qrInterval = Duration(milliseconds: _qrIntervalOverride > 0 ? _qrIntervalOverride : 100);
 
   KexSourceController? _source;
   KexReaderController? _reader;
@@ -67,6 +81,8 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
   // Taille de clé à générer (en octets)
   int _keySizeBytes = 256 * 1024;
   bool _continuous = false;
+  // Key bytes over Bluetooth (faster, AES-encrypted) instead of QR codes only
+  bool _bluetooth = false;
 
   /// Largest key a continuous exchange produces (about an hour of QR codes).
   static const _continuousMaxBytes = 30 * 1024 * 1024;
@@ -85,7 +101,10 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
   void dispose() {
     _scannerController.dispose();
     _source?.dispose();
+    _keyService.noise?.stop();
+    _keyService.motion?.stop();
     _reader?.dispose();
+    _syncService.close();
     _restoreBrightness();
     _disableWakelock();
     super.dispose();
@@ -146,15 +165,53 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
     if (mounted) setState(() {});
   }
 
+  /// Stops the camera and sensors and records how much of the key received
+  /// their noise.
+  Future<void> _reportNoise() async {
+    final motion = _keyService.motion;
+    if (motion != null) {
+      _keyService.motion = null;
+      await motion.stop();
+      _log.i('KeyExchange', 'Motion noise: ${motion.mixedBytes} key bytes mixed, ${motion.produced}, '
+          '${motion.acceptedWindows} windows used, ${motion.rejectedWindows} rejected');
+      if (!kReleaseMode) {
+        TestEvents.emit('motion_noise', {
+          'mixed': motion.mixedBytes,
+          'produced': motion.produced,
+          'windowsUsed': motion.acceptedWindows,
+          'windowsRejected': motion.rejectedWindows,
+        });
+      }
+    }
+    final noise = _keyService.noise;
+    if (noise == null) return;
+    _keyService.noise = null;
+    await noise.stop();
+    _log.i('KeyExchange', 'Camera noise: ${noise.mixedBytes} key bytes mixed, ${noise.unmixedBytes} without, '
+        '${noise.acceptedFrames} frames used, ${noise.rejectedFrames} rejected');
+    if (kReleaseMode) return;
+    final r = noise.reports();
+    TestEvents.emit('camera_noise', {
+      'mixed': noise.mixedBytes,
+      'unmixed': noise.unmixedBytes,
+      'framesUsed': noise.acceptedFrames,
+      'framesRejected': noise.rejectedFrames,
+      'raw': r.raw?.toString(),
+      'conditioned': r.conditioned?.toString(),
+    });
+  }
+
   Future<void> _startAsSource() async {
     if (_currentUserId.isEmpty) return;
     setState(() => _errorMessage = null);
     final source = KexSourceController(
       sync: _syncService,
+      data: _syncService,
       keyService: _keyService,
       localId: _currentUserId,
       conversationId: widget.existingConversationId!,
       peerIds: widget.peerIds,
+      rotationInterval: _qrInterval,
     )..addListener(_onControllerChanged);
     _source = source;
     setState(() {
@@ -162,8 +219,23 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
       _currentStep = 1;
     });
     try {
-      final preGenSession = _continuous ? null : KeyPreGenerationService().consumeSession(_keySizeBytes);
-      await source.start(_keySizeBytes, preGeneratedSegments: preGenSession?.preGeneratedSegments, continuous: _continuous);
+      // Camera and motion sensor noise mixed into the key; segments generated in advance would
+      // not have it, so they are not used
+      _keyService.motion = MotionNoise()..start();
+      final noise = CameraNoise();
+      _keyService.noise = noise;
+      await noise.start();
+      await noise.ready.timeout(const Duration(seconds: 5), onTimeout: () {});
+      await source.start(
+        _keySizeBytes,
+        continuous: _continuous,
+        bluetooth: _bluetooth,
+      );
+      if (source.bluetoothUnavailable && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Bluetooth indisponible: la clé est affichée en QR codes')),
+        );
+      }
       _setMaxBrightness();
       final result = await source.result;
       await _finalizeAsSource(source, result);
@@ -176,6 +248,7 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
   void _startAsReader() {
     final reader = KexReaderController(
       sync: _syncService,
+      data: _syncService,
       keyService: _keyService,
       localId: _currentUserId,
       conversationId: widget.existingConversationId!,
@@ -221,6 +294,7 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
     }
     await _keyService.saveKey(conversationId, finalKey);
     _log.i('KeyExchange', 'Shared key saved successfully');
+    await _reportNoise();
     TestEvents.emit('key_saved', {'role': 'source', 'conversationId': conversationId, 'bytes': finalKey.lengthInBytes, 'fingerprint': TestEvents.keyFingerprint(finalKey.keyData)});
     await _messageService.updateKeyDebugInfo(conversationId);
     try {
@@ -370,19 +444,44 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              _buildKeyGenButton('256 Ko', '~40 s', 256 * 1024),
-              const SizedBox(width: 8),
-              _buildKeyGenButton('1 Mo', '~2 min', 1 << 20),
-              const SizedBox(width: 8),
-              _buildKeyGenButton('Continu', "jusqu'à l'arrêt", _continuousMaxBytes, continuous: true),
+          SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(value: false, label: Text('QR codes'), icon: Icon(Icons.qr_code_2)),
+              ButtonSegment(value: true, label: Text('Bluetooth'), icon: Icon(Icons.bluetooth)),
             ],
+            selected: {_bluetooth},
+            onSelectionChanged: (s) => setState(() => _bluetooth = s.first),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: _bluetooth
+                ? [
+                    _buildKeyGenButton('1 Mo', 'selon tél.', 1 << 20),
+                    const SizedBox(width: 8),
+                    _buildKeyGenButton('8 Mo', 'selon tél.', 8 << 20),
+                    const SizedBox(width: 8),
+                    _buildKeyGenButton('Continu', "jusqu'à l'arrêt", _continuousMaxBytes, continuous: true),
+                  ]
+                : [
+                    _buildKeyGenButton('256 Ko', '~40 s', 256 * 1024),
+                    const SizedBox(width: 8),
+                    _buildKeyGenButton('1 Mo', '~2 min', 1 << 20),
+                    const SizedBox(width: 8),
+                    _buildKeyGenButton('Continu', "jusqu'à l'arrêt", _continuousMaxBytes, continuous: true),
+                  ],
           ),
           const SizedBox(height: 12),
           Text(
-            'Environ 7 Ko par seconde. En continu, la clé grandit jusqu\'à ce que '
-            'quelqu\'un appuie sur Terminer (30 Mo au plus).',
+            _bluetooth
+                ? 'Plus rapide sur les téléphones récents. Un QR code transmet un secret à usage unique, puis la clé passe '
+                    'par Bluetooth, chiffrée en AES-256. Elle est alors aussi sûre qu\'AES: '
+                    'moins que le mode QR, qui ne passe que par l\'écran.'
+                : 'Le plus sûr: la clé ne passe que par l\'écran et la caméra. Environ 7 Ko par seconde.',
+            style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'En continu, la clé grandit jusqu\'à ce que quelqu\'un appuie sur Terminer (30 Mo au plus).',
             style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
           ),
 
@@ -415,7 +514,7 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
 
   Widget _buildSourceView() {
     final source = _source;
-    if (source == null || source.currentPacket == null) {
+    if (source == null || source.currentPayload == null) {
       return const Center(child: CircularProgressIndicator());
     }
     final scheme = Theme.of(context).colorScheme;
@@ -481,7 +580,11 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Text(
-                    source.currentLabel,
+                    !source.usesBluetooth
+                        ? source.currentLabel
+                        : source.packetsSent == 0
+                            ? 'Scannez ce code, téléphones proches'
+                            : 'Envoi par Bluetooth',
                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                 ),
@@ -518,14 +621,16 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
     final isCompleted = reader.isCompleted;
     final continuous = totalSegments * KeyService.segmentSizeBytes >= _continuousMaxBytes;
     final currentUserFinished = !continuous && (reader.hasFinishedScanning || (totalSegments > 0 && segmentsRead >= totalSegments));
-    final shouldShowScanner = !currentUserFinished && !isCompleted;
+    final shouldShowScanner = !currentUserFinished && !isCompleted && !reader.usesBluetooth;
 
     final status = isCompleted
         ? 'Échange terminé'
         : currentUserFinished
             ? 'Clé reçue, en attente des autres'
             : segmentsRead == 0
-                ? 'Visez les QR codes de l\'autre appareil'
+                ? reader.usesBluetooth
+                    ? 'Connexion Bluetooth...'
+                    : 'Visez les QR codes de l\'autre appareil'
                 : continuous
                     ? 'Réception continue: ${_formatSize(reader.bytesRead)}'
                     : 'Réception: ${_formatSize(reader.bytesRead)} / ${_formatSize(totalSegments * KeyService.segmentSizeBytes)}';
@@ -583,7 +688,13 @@ class _KeyExchangeScreenState extends State<KeyExchangeScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.check_circle_outline, size: 64, color: scheme.statusOk),
+                      Icon(
+                        reader.usesBluetooth && !isCompleted && !currentUserFinished
+                            ? Icons.bluetooth_connected
+                            : Icons.check_circle_outline,
+                        size: 64,
+                        color: scheme.statusOk,
+                      ),
                       const SizedBox(height: 16),
                       Text(status, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                       if (isCompleted) ...[

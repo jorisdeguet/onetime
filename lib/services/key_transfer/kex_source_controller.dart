@@ -7,6 +7,8 @@ import '../../models/local/shared_key.dart';
 import '../app_logger.dart';
 import '../key_service.dart';
 import 'fountain.dart';
+import 'kex_bluetooth_transfer.dart';
+import 'kex_link.dart';
 import 'kex_sync_channel.dart';
 
 /// Key bytes produced by an exchange, identical on every participant.
@@ -24,8 +26,12 @@ class KexResult {
 /// blocks some reader still misses. Readers acknowledge whole blocks on the
 /// [KexSyncChannel]; the exchange ends once every reader holds every segment.
 /// The screen renders [currentPayload] (as a QR code) and listens for [result].
+///
+/// In Bluetooth mode the same packets go over [KexDataLink], encrypted with
+/// a one-time secret, and the only QR code is the [KexInvite] carrying it.
 class KexSourceController extends ChangeNotifier {
   final KexSyncChannel _sync;
+  final KexDataLink? _data;
   final KeyService _keyService;
   final FountainCodec _codec = const FountainCodec();
   final String localId;
@@ -45,6 +51,17 @@ class KexSourceController extends ChangeNotifier {
   FountainEncoder? _encoder;
   String? error;
 
+  /// Bluetooth mode: the code readers scan, and the cipher of the stream.
+  KexInvite? invite;
+  KexPacketCipher? _cipher;
+
+  /// Bluetooth was asked for but is unavailable: the exchange uses QR codes.
+  bool bluetoothUnavailable = false;
+  int packetsSent = 0;
+  DateTime? _rateSince;
+
+  bool get usesBluetooth => _cipher != null;
+
   final Completer<KexResult> _result = Completer<KexResult>();
   StreamSubscription<FsKex?>? _syncSubscription;
   Timer? _rotationTimer;
@@ -53,6 +70,7 @@ class KexSourceController extends ChangeNotifier {
 
   KexSourceController({
     required KexSyncChannel sync,
+    KexDataLink? data,
     required KeyService keyService,
     required this.localId,
     required this.conversationId,
@@ -60,11 +78,15 @@ class KexSourceController extends ChangeNotifier {
     this.rotationInterval = const Duration(milliseconds: 100),
     this.autoRotate = true,
   })  : _sync = sync,
+        _data = data,
         _keyService = keyService;
 
   Future<KexResult> get result => _result.future;
 
-  String? get currentPayload => currentPacket == null ? null : _codec.encode(currentPacket!);
+  String? get currentPayload {
+    if (usesBluetooth) return invite!.encode();
+    return currentPacket == null ? null : _codec.encode(currentPacket!);
+  }
 
   /// Short description of the packet on display, e.g. "12/32" or "bloc 2 +5".
   String get currentLabel {
@@ -81,10 +103,19 @@ class KexSourceController extends ChangeNotifier {
   /// long before its maximum size).
   static const _generationLead = 256;
 
+  /// Bluetooth packets in flight (sent, not reported received yet).
+  static const _bluetoothWindow = 16;
+
   /// Creates the shared session, shows the first segment and starts rotating.
   /// With [continuous], [totalBytes] is only a maximum: the exchange goes on
   /// until the source calls [terminate] or a reader asks to stop.
-  Future<void> start(int totalBytes, {List<KeySegmentQrData>? preGeneratedSegments, bool continuous = false}) async {
+  /// With [bluetooth], the key goes over Bluetooth when it is available.
+  Future<void> start(
+    int totalBytes, {
+    List<KeySegmentQrData>? preGeneratedSegments,
+    bool continuous = false,
+    bool bluetooth = false,
+  }) async {
     this.continuous = continuous;
     final segmentCount = (totalBytes + KeyService.segmentSizeBytes - 1) ~/ KeyService.segmentSizeBytes;
     syncState = await _sync.createSession(
@@ -101,16 +132,73 @@ class KexSourceController extends ChangeNotifier {
       sessionId: syncState!.id,
       preGeneratedSegments: preGeneratedSegments,
     );
+    if (bluetooth) await _openBluetooth(totalBytes);
     _encoder = FountainEncoder(
       layout: FountainLayout(totalBytes: totalBytes, symbolSize: KeyService.segmentSizeBytes),
       sessionId: syncState!.id,
       symbolAt: session!.getSegmentData,
+      ackLagBlocks: usesBluetooth ? 4 : 0,
     );
     _syncSubscription = _sync.watchSession(syncState!.id).listen(onSyncUpdate);
     if (session!.getSegmentData(0) == null) _keyService.generateNextSegment(session!);
-    tick();
-    if (autoRotate) _startRotation();
+    if (usesBluetooth) {
+      unawaited(_streamOverBluetooth());
+    } else {
+      tick();
+      if (autoRotate) _startRotation();
+    }
     unawaited(_generateRemainingSegments());
+  }
+
+  Future<void> _openBluetooth(int totalBytes) async {
+    final data = _data;
+    try {
+      if (data == null) throw StateError('No Bluetooth link');
+      await data.hostReady.timeout(const Duration(seconds: 8));
+      invite = KexInvite.generate(sessionId: syncState!.id, totalBytes: totalBytes);
+      _cipher = KexPacketCipher(invite!);
+    } catch (e) {
+      _log.w('KeyExchange', 'Bluetooth unavailable, showing the key as QR codes: $e');
+      bluetoothUnavailable = true;
+    }
+  }
+
+  /// Bluetooth mode: sends packets as fast as the radio takes them, while a
+  /// reader is connected.
+  Future<void> _streamOverBluetooth() async {
+    final data = _data!;
+    while (!_disposed && !_terminating) {
+      if (data.dataReceivers == 0) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        continue;
+      }
+      // Stays a few packets ahead of the slowest reader: the radio accepts
+      // far more than it can send, and a full queue stalls the whole link
+      if (packetsSent - data.packetsReceivedBySlowest >= _bluetoothWindow) {
+        await Future.delayed(const Duration(milliseconds: 10));
+        continue;
+      }
+      final packet = _encoder!.next(_isBlockDoneByAll);
+      if (packet == null) {
+        // Next segment not generated yet, or waiting for the last acknowledgements
+        await Future.delayed(const Duration(milliseconds: 20));
+        continue;
+      }
+      currentPacket = packet;
+      try {
+        await data.sendData(await _cipher!.encrypt(_codec.encodeBytes(packet)));
+      } catch (e) {
+        _log.w('KeyExchange', 'Bluetooth send failed: $e');
+        await Future.delayed(const Duration(milliseconds: 200));
+      }
+      if (++packetsSent % 8 == 0) _notify();
+      if (packetsSent % 64 == 0) {
+        final now = DateTime.now();
+        final ms = now.difference(_rateSince ?? now).inMilliseconds;
+        if (ms > 0) _log.i('KeyExchange', 'Bluetooth: ${(64 * 1000 / ms).toStringAsFixed(1)} packets/s');
+        _rateSince = now;
+      }
+    }
   }
 
   /// Applies a new snapshot of the shared session; ends the exchange when complete.
@@ -196,6 +284,11 @@ class KexSourceController extends ChangeNotifier {
     while (!_disposed && !_terminating && session!.currentSegmentIndex < session!.totalSegments) {
       if (session!.currentSegmentIndex - (_encoder?.symbolsShown ?? 0) >= _generationLead) {
         await Future.delayed(const Duration(milliseconds: 100));
+        continue;
+      }
+      // Each segment waits for its share of camera noise
+      if (_keyService.awaitsNoise(KeyService.segmentSizeBytes)) {
+        await Future.delayed(const Duration(milliseconds: 50));
         continue;
       }
       _keyService.generateNextSegment(session!);

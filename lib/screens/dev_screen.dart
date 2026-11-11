@@ -1,9 +1,14 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../services/local_storage_service.dart';
 import '../models/firestore/fs_conversation.dart';
+import '../services/entropy/camera_noise.dart';
+import '../services/entropy/sensor_noise.dart';
+import '../services/test_events.dart';
 
 /// Development / debug screen.
 ///
@@ -34,6 +39,99 @@ class DevScreen extends StatelessWidget {
               ),
             ),
           ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.grain),
+              title: const Text("Sources d'aléa"),
+              subtitle: const Text('Capteurs et caméra, 30 s chacun, téléphone immobile'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const _EntropySourcesScreen()),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Randomness sources
+// ────────────────────────────────────────────────────────────────────────────
+
+/// Compares the randomness each sensor gives on a still phone: quality
+/// (min-entropy, statistical tests) and rate.
+class _EntropySourcesScreen extends StatefulWidget {
+  const _EntropySourcesScreen();
+
+  @override
+  State<_EntropySourcesScreen> createState() => _EntropySourcesScreenState();
+}
+
+class _EntropySourcesScreenState extends State<_EntropySourcesScreen> {
+  static const _duration = Duration(seconds: 30);
+  final List<String> _lines = [];
+  bool _running = false;
+
+  void _add(String line) => setState(() => _lines.add(line));
+
+  Future<void> _run() async {
+    setState(() {
+      _running = true;
+      _lines.clear();
+    });
+    for (final sensor in ['accelerometer', 'gyroscope', 'magnetometer']) {
+      _add('$sensor…');
+      try {
+        final r = await SensorNoise.measure(sensor, duration: _duration);
+        TestEvents.emit('sensor_noise', r.toJson());
+        _add('$sensor: ${r.rateHz.toStringAsFixed(0)} Hz, résolution ${r.resolution.toStringAsPrecision(3)}, '
+            '${r.minEntropyPerAxis.toStringAsFixed(2)} bit/axe, ${r.bitsPerSecond.toStringAsFixed(0)} bit/s');
+      } catch (e) {
+        _add('$sensor: indisponible ($e)');
+      }
+    }
+    _add('camera…');
+    final noise = CameraNoise();
+    await noise.start();
+    final watch = Stopwatch()..start();
+    await Future.delayed(_duration);
+    final produced = noise.available;
+    await noise.stop();
+    final seconds = watch.elapsedMilliseconds / 1000;
+    final reports = noise.reports();
+    final event = {
+      'sensor': 'camera',
+      'seconds': seconds,
+      'framesUsed': noise.acceptedFrames,
+      'framesRejected': noise.rejectedFrames,
+      'bitsPerSecond': produced * 8 / seconds,
+      'minEntropyPerPixelBit': reports.raw == null ? null : reports.raw!.minEntropy / 8,
+      'raw': reports.raw?.toString(),
+      'conditioned': reports.conditioned?.toString(),
+    };
+    TestEvents.emit('sensor_noise', event);
+    _add('camera: ${(noise.acceptedFrames / seconds).toStringAsFixed(1)} images/s, '
+        '${(produced * 8 / seconds).toStringAsFixed(0)} bit/s');
+    _add(const JsonEncoder.withIndent(' ').convert(event));
+    setState(() => _running = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Sources d'aléa")),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          ElevatedButton(
+            onPressed: _running ? null : _run,
+            child: Text(_running ? 'Mesure en cours…' : 'Mesurer'),
+          ),
+          const SizedBox(height: 16),
+          for (final l in _lines) Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(l)),
         ],
       ),
     );

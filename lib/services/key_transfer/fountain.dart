@@ -85,7 +85,11 @@ class FountainEncoder {
   int _packets = 0;
   late final List<int> _repairsSent = List.filled(layout.blockCount, 0);
 
-  FountainEncoder({required this.layout, required this.sessionId, required this.symbolAt});
+  /// Most recent blocks not counted as lagging yet: their acknowledgements
+  /// may still be on their way (a radio link sends ahead of its acks).
+  final int ackLagBlocks;
+
+  FountainEncoder({required this.layout, required this.sessionId, required this.symbolAt, this.ackLagBlocks = 0});
 
   /// Symbols shown at least once so far.
   int get symbolsShown => _nextSystematic;
@@ -97,7 +101,7 @@ class FountainEncoder {
     _packets++;
     if (_nextSystematic < layout.symbolCount) {
       // Blocks whose symbols were all shown already, and how many lag behind
-      final shownBlocks = _nextSystematic ~/ layout.blockSymbols;
+      final shownBlocks = (_nextSystematic ~/ layout.blockSymbols - ackLagBlocks).clamp(0, layout.blockCount);
       int lagging = 0;
       for (int b = 0; b < shownBlocks; b++) {
         if (!isBlockDone(b)) lagging++;
@@ -270,7 +274,12 @@ class FountainCodec {
 
   const FountainCodec();
 
-  String encode(FountainPacket p) {
+  String encode(FountainPacket p) => Base45.encode(encodeBytes(p));
+
+  FountainPacket decode(String payload) => decodeBytes(Base45.decode(payload));
+
+  /// The same packet without Base45, for the Bluetooth transfer.
+  Uint8List encodeBytes(FountainPacket p) {
     final id = ascii.encode(p.sessionId);
     final header = ByteData(13 + id.length)
       ..setUint8(0, _version)
@@ -288,11 +297,10 @@ class FountainCodec {
     final bytes = BytesBuilder(copy: false)
       ..add(header.buffer.asUint8List())
       ..add(p.data);
-    return Base45.encode(bytes.toBytes());
+    return bytes.toBytes();
   }
 
-  FountainPacket decode(String payload) {
-    final bytes = Base45.decode(payload);
+  FountainPacket decodeBytes(Uint8List bytes) {
     final d = ByteData.sublistView(bytes);
     if (bytes.length < 13 || d.getUint8(0) != _version) throw const FormatException('Unknown packet format');
     final idLength = d.getUint8(1);

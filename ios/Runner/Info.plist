@@ -26,6 +26,8 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Bluetooth speeds up key sharing between nearby phones (only confirmations travel this way, never key bytes).</string>
 	<key>NSCameraUsageDescription</key>
 	<string>The app uses the camera to scan QR codes and capture photos when necessary (e.g., for sharing keys).</string>
 	<key>UIApplicationSceneManifest</key>

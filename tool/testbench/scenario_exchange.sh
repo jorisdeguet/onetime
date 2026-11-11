@@ -13,6 +13,8 @@
 #                     must decrypt the same bytes. Needs a key larger than the photo.
 #   OT_EXTEND=<size>  extend the conversation's key with a second exchange of
 #                     <size> (a key button label), then send another photo if OT_PHOTO=1
+#   OT_BLUETOOTH=1    choose the Bluetooth mode before each key button (sizes
+#                     "1 Mo", "8 Mo", "Continu"): one QR code, then the key over Bluetooth
 #
 # Prints a PASS/FAIL line per check and exits non-zero on the first failure.
 set -euo pipefail
@@ -42,6 +44,10 @@ onboard() {
   "$OT" reset "$1" >/dev/null
   "$OT" reverse "$1"  # Firebase emulator ports, used by emulator builds only
   "$ADB" -s "$1" shell pm grant "$PKG" android.permission.CAMERA
+  # Bluetooth acknowledgement channel (each name exists only on some Android versions)
+  for perm in BLUETOOTH_SCAN BLUETOOTH_CONNECT BLUETOOTH_ADVERTISE ACCESS_FINE_LOCATION ACCESS_COARSE_LOCATION; do
+    "$ADB" -s "$1" shell pm grant "$PKG" "android.permission.$perm" 2>/dev/null || true
+  done
   "$OT" clearlog "$1"
   "$OT" launch "$1"
   "$OT" wait "$1" "Commencer" 40 >/dev/null || fail "$1 login screen did not appear"
@@ -56,7 +62,8 @@ start=$(date +%s)
 onboard "$SRC" "Source"
 onboard "$RDR" "Reader"
 pass "both phones onboarded"
-"$OT" tap "$SRC" "navigation menu" >/dev/null
+# "navigation menu" or "menu de navigation", depending on the phone language
+"$OT" tap "$SRC" "menu" >/dev/null
 sleep 1
 "$OT" tap "$SRC" "Create Conversation" >/dev/null
 "$OT" wait "$SRC" "Valider" 30 >/dev/null || fail "conversation QR not shown on source"
@@ -81,6 +88,8 @@ exchange_key() {
   esac
   src_before="$(event_field "$SRC" key_saved t)"; rdr_before="$(event_field "$RDR" key_saved t)"
   kex_start=$(date +%s)
+  # OT_BLUETOOTH=1: key bytes over Bluetooth (one QR code for the secret)
+  if [ -n "${OT_BLUETOOTH:-}" ]; then "$OT" tap "$SRC" "Bluetooth" >/dev/null; sleep 1; fi
   "$OT" tap "$SRC" "$size" >/dev/null
   # About 7 KB/s over QR, with a wide margin
   deadline=$(( kex_start + want_new / 3000 + 180 ))
@@ -105,6 +114,9 @@ exchange_key() {
   local src_fp rdr_fp
   src_fp="$(event_field "$SRC" key_saved fingerprint)"; rdr_fp="$(event_field "$RDR" key_saved fingerprint)"
   echo "      key exchange ($size): ${secs}s, source ${src_bytes} B, reader ${rdr_bytes} B"
+  sleep 2  # the reader reports its acknowledgement counts when the exchange screen closes
+  echo "      bluetooth: source $(event_field "$SRC" kex_link state), reader $(event_field "$RDR" kex_link state)," \
+    "acks over bluetooth $(event_field "$RDR" kex_link_acks link), over server $(event_field "$RDR" kex_link_acks server)"
   [ "$src_fp" = "$rdr_fp" ] || fail "key fingerprints differ ($src_fp vs $rdr_fp)"
   pass "both phones hold identical key bytes ($src_fp)"
   [ "$src_bytes" -ge "$want_new" ] || fail "key is $src_bytes bytes, expected at least $want_new"
@@ -146,8 +158,8 @@ send_photo() {
   "$OT" tap "$from" "Envoyer image/fichier" >/dev/null || fail "$from has no attachment button"
   sleep 1
   "$OT" tap "$from" "Galerie" >/dev/null
-  "$OT" wait "$from" "$photo, " 20 >/dev/null || fail "$from picker does not show $photo"
-  "$OT" tap "$from" "$photo, " >/dev/null
+  "$OT" wait "$from" "$photo" 40 >/dev/null || fail "$from picker does not show $photo"
+  "$OT" tap "$from" "$photo" >/dev/null
   "$OT" wait "$from" "Envoyer (" 30 >/dev/null || fail "$from send screen did not appear"
   "$OT" tap "$from" "$quality" >/dev/null
   sleep 4

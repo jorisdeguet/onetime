@@ -225,8 +225,8 @@ footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--rule
 
     <section class="q" id="aleatoire">
       <h2>La clé est-elle vraiment aléatoire ?</h2>
-      <p class="answer">Elle mélange deux sources : le générateur du système et le bruit du capteur de la caméra.</p>
-      <p class="why">Le capteur d'un appareil photo produit un léger grain, même dans le noir : la neige de la télé, en quelque sorte. Aucun programme ne peut le prévoir. <strong>Les deux sources sont combinées : la clé reste imprévisible tant qu'une seule des deux l'est.</strong> Les deux passent les tests statistiques habituels :</p>
+      <p class="answer">Elle mélange le générateur du système, le bruit de la caméra et celui des capteurs de mouvement.</p>
+      <p class="why">Le capteur d'un appareil photo produit un léger grain, même dans le noir : la neige de la télé, en quelque sorte. Aucun programme ne peut le prévoir. <strong>Les sources sont combinées : la clé reste imprévisible tant qu'une seule l'est.</strong> Système et caméra passent les tests statistiques habituels :</p>
       <div class="tablewrap">
         <table>
           <thead><tr><th>Test</th><th>Ce qu'il cherche</th><th>Générateur du système</th><th>Caméra (Pixel 3)</th></tr></thead>
@@ -240,7 +240,20 @@ footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--rule
         </table>
       </div>
       <p class="why">Un test est réussi quand p est entre 0,01 et 0,99. Brut, le grain de la caméra échoue : il est biaisé. On le passe donc au hachage, en ne gardant qu'un quart de son volume. Ce qui compte est mesuré avant hachage : <strong>0,87 bit d'imprévisible par pixel, pour 0,31 exigé.</strong> La caméra fournit ainsi 56 Ko d'aléa par seconde, bien plus que ce que l'échange consomme.</p>
-      <span class="status ok">Deux sources indépendantes</span>
+      <p class="why">S'y ajoutent l'accéléromètre, le gyroscope et la boussole : ils tremblent un peu même posés sur une table. Ils sont discrets (aucune permission, aucun témoin), mais lents :</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Source</th><th>Pixel 3</th><th>REVVL 2</th><th>1 Mo de clé</th></tr></thead>
+          <tbody>
+            <tr><td>Caméra</td><td class="num">56 Ko/s</td><td class="num">43 Ko/s</td><td class="num">19 s</td></tr>
+            <tr><td>Accéléromètre</td><td class="num">570 lettres/s</td><td class="num">75 lettres/s</td><td class="num">30 min</td></tr>
+            <tr><td>Gyroscope</td><td class="num">300 lettres/s</td><td class="num">absent</td><td class="num">1 h</td></tr>
+            <tr><td>Boussole</td><td class="num">130 lettres/s</td><td class="num">38 lettres/s</td><td class="num">2 h 15</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="why">Dans un échange réel de 1 Mo, les capteurs couvrent environ 4 % de la clé, la caméra 100 %. Un aimant ou une vibration peut figer un capteur : chaque paquet de 256 mesures est alors vérifié, et écarté s'il manque de bruit.</p>
+      <span class="status ok">Quatre sources indépendantes</span>
     </section>
 
     <section class="q" id="quantique">

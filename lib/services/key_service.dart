@@ -5,6 +5,8 @@ import 'dart:typed_data';
 import 'package:onetime/services/key_storage.dart';
 
 import '../models/local/shared_key.dart';
+import 'entropy/camera_noise.dart';
+import 'entropy/motion_noise.dart';
 
 class KeyService {
   static const int segmentSizeBytes = 1024;
@@ -13,6 +15,20 @@ class KeyService {
   late final _keyStorage = KeyStorage.instance;
 
   KeyService();
+
+  /// Camera sensor noise XORed into every generated key byte when set.
+  CameraNoise? noise;
+
+  /// Motion sensor noise XORed into as many key bytes as it covers (it is
+  /// much slower than the camera and never holds generation back).
+  MotionNoise? motion;
+
+  /// True when [noise] runs but cannot cover [byteCount] more bytes yet:
+  /// generation should wait rather than produce bytes without it.
+  bool awaitsNoise(int byteCount) {
+    final n = noise;
+    return n != null && n.isRunning && n.available < byteCount;
+  }
 
   Future<SharedKey> getKey(String conversationId) async
     => _keyStorage.getKey(conversationId);
@@ -184,10 +200,29 @@ class KeyService {
     return 'session_$random';
   }
 
+  /// System generator XOR camera noise XOR motion noise: unpredictable as long
+  /// as any of them is.
   Uint8List _generateRandomBytes(int byteCount) {
     final random = Random.secure();
-    final bytes = List<int>.generate(byteCount, (_) => random.nextInt(256));
-    return Uint8List.fromList(bytes);
+    final bytes = Uint8List.fromList(List<int>.generate(byteCount, (_) => random.nextInt(256)));
+    final n = noise;
+    if (n != null) {
+      final physical = n.take(byteCount);
+      for (int i = 0; i < physical.length; i++) {
+        bytes[i] ^= physical[i];
+      }
+      n.mixedBytes += physical.length;
+      n.unmixedBytes += byteCount - physical.length;
+    }
+    final m = motion;
+    if (m != null) {
+      final physical = m.take(byteCount);
+      for (int i = 0; i < physical.length; i++) {
+        bytes[i] ^= physical[i];
+      }
+      m.mixedBytes += physical.length;
+    }
+    return bytes;
   }
 
   Future<List<String>> listConversations() async =>
